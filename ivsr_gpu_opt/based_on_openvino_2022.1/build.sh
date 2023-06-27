@@ -3,7 +3,6 @@ EX_PATH=${PWD}
 git submodule update --init ./openvino
 cd openvino
 git submodule update --init --recursive
-
 cp ../patches/*.patch ./
 for patch_file in $(find -iname "*.patch" | sort -n);
 do

@@ -44,5 +44,3 @@ Please note that all the pathes specified options should exist and do not end up
 <PATH_TO_OPENVINO_PROJECT>/bin/intel64/basicvsr_sample -model_path=<IR model path(.xml)> -extension=<PATH_TO_OPENVINO_PROJECT>/bin/intel64/lib/libcustom_extension.so -data_path=<Directory path including input frames> -nif=<Number of input frames> -device=GPU -save_predictions -save_path=<Directory path to save results> -cldnn_config=<PATH_TO_OPENVINO_PROJECT>/flow_warp_custom_op/flow_warp.xml
 ```
 
-
-
