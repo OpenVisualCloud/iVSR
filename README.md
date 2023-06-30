@@ -11,6 +11,9 @@ We have enhanced the public model to achieve better visual quality and less comp
 The performance of BasicVSR inference has also been optimized for Intel GPU. 
 Now, 2x Enhanced BasicVSR can be run on both Intel CPU and Intel Data Center GPU Flex 170 (*aka* ATS-M1 150W) with OpenVINO and FFmpeg.
 
+We also provide iVSR SDK which aims to provide a patch-based, heterogeneous, multi-GPU and multi-algo VSR solution with 
+great quality and performance.
+
 
 ## How to evaluate
 
@@ -18,6 +21,9 @@ Please expect `pre-production` quality of current solution.
 
 ### Get models
 Please [contact us](mailto:yanjie.pan@intel.com) for FP32/INT8 Enhanced BasicVSR models. Will provide links to download the models soon.
+
+### Run with iVSR SDK
+Refer to the guide [here](ivsr_sdk/README.md).
 
 ### Run with OpenVINO
 Refer to the guide [here](ivsr_gpu_opt/README.md).
@@ -28,5 +34,5 @@ Refer to the guide [here](ivsr_ffmpeg_plugin/README.md).
 
 ## License
 
-Enhanced BasicVSR is licensed under the BSD 3-clause license. See [LICENSE](LICENSE.md) for details.
+Please check the license under each folder.
 

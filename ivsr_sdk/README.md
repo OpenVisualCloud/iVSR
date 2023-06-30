@@ -1,131 +1,186 @@
-# Environment Set Up
-
-This document introduces how to set up the environment to build and use the [Intel Video Super Resolution Development Kit](./Introduction.md).
-
-## Prerequisites
-
-- Intel Xeon hardware platform
-- (Optional) Intel Data Center GPU Flex 170(*aka* ATS-M1 150W)
-- Host OS: Linux based OS (Ubuntu 22.04)
-- Docker OS: Ubuntu 22.04
-- kernel: 5.15.0-72-generic
-- cmake
-- make
-- git
-- [docker](https://www.docker.com)
+# Intel Video Super Resolution Development Kit
 
 
-## Install GPU Driver
+Intel Video Super Resolution Development Kit (iVSR SDK) is a SDK which incorporates state-of-the-art deep learning based super resolution algorithms.
 
-### Kernel Update
+The SDK Core consists of two parts, one is the patch solution part, the other is the task scheduler part. 
+1. The patch solution part will split the frames into small patches, then the small patch will be wrapped as one inference task and put it in the task queue in the scheduler module. In addition, each small patch will have a flag to indicate which platform will be used for inference.
+1. The task scheduler part will fetch task from the task queue and send the task to the corresponding hardware according to the flag set for each small patch.
 
-Our repo is based on kernel 5.15.0-72-generic. Check your original kernel with `uname -r`. If the output is not 5.15.0-72-generic,  run the following steps.
+The VSR SDK sample application supports to deliver super resolution algorithms on multi-HW devices, targeting to deliver a high quality and performance VSR system.
 
-1. Install kernel 5.15.0-72-generic.
+<br />
 
-   ```bash
-   sudo apt-get update
-   sudo apt-get install -y --install-suggests linux-image-5.15.0-72-generic
-   ```
+## **Feature Overview**
 
-2. Modify the `GRUB_DEFAULT` in `/etc/default/grub` to set the kernel boot order. Replace `GRUB_DEFAULT=0` with the following line.
+<!-- ![overview](./figs/iVSR_SDK.PNG) -->
+<div align=center>
+<img src="./figs/iVSR_SDK.PNG" width = 75% height = 75% />
+</div>
 
-   ```shell
-   GRUB_DEFAULT='Advanced options for Ubuntu>Ubuntu, with Linux 5.15.0-72-generic'
-   ```
+<br />
 
-3. Update grub configure and reboot.
-
-   ```bash
-   sudo update-grub
-   sudo reboot
-   ```
-
-After rebooting, check the kernel version with `uname -r` again.
-
-Detailed GPU Flex driver installation can be referenced on [https://dgpu-docs.intel.com/driver/installation.html#](https://dgpu-docs.intel.com/driver/installation.html#)
+## **API Introduction**
 
 
+The iVSR toolkit only provides API for C. All available interfaces are listed in the following table for [overview](#overview). Please refer to [Detailed Description](#detailed-description) for more information.
 
-### DKMS Installation
 
-1. Add package repo
+### **Overview**
 
-```bash
-sudo apt-get install -y software-properties-common curl gnupg 
-wget -qO - https://repositories.intel.com/graphics/intel-graphics.key | \
-  sudo gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/graphics/ubuntu jammy flex" | \
-  sudo tee /etc/apt/sources.list.d/intel-gpu-jammy.list
-sudo apt-get update
+|Function name|Operation|
+|:--|:--|
+|[ivsr_init](#ivsr_init)|Initialize the iVSR environment.|
+|[ivsr_process](#ivsr_process)|Perform a VSR task.|
+|[ivsr_reconfig](#ivsr_reconfig)|Reset and re-config iVSR environment.|
+|[ivsr_get_attr](#ivsr_get_attr)|Get the iVSR properties/attributes.|
+|[ivsr_deinit](#ivsr_deinit)|De-initialize the resources allocated for the iVSR environment.|
+
+
+### **Detailed Description**
+
+
+#### **ivsr_init**
+
+Initialize the iVSR environment.
+
+**Syntax**
+
+```C 
+IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle); 
+```
+**Parameters**
+
+- `configs` Configurations to initialize the intel VSR SDK.
+- `handle` A handle for VSR processing. 
+
+**Description**
+
+The method creates an iVSR handle to prepare VSR environment according to the configurations.
+
+**Return Values**
+
+ `IVSRStatus`	Return a status to indicate whether the initialization is successful or not.
+
+
+#### **ivsr_process**
+
+Perform a VSR task.
+
+**Syntax**
+
+```C
+IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb); 
 ```
 
-2. Install DKMS & header files
+**Parameters**
 
-```bash
-sudo apt-get -y install gawk dkms linux-headers-$(uname -r) libc6-dev
+- `handle` A handle for VSR processing. 
+- `input_data` Input data address for a VSR task.
+- `output_data` Output data address for the VSR task output.
+- `cb` A callback function for user to know something about the VSR task, e.g. indicating whether the VSR task has completed.
+
+**Description**
+
+The method performs VSR processing with the given input data and generates the output data.
+
+**Return Values**
+
+`IVSRStatus`	Return a status to indicate whether VSR processing is successful or not.
+
+
+#### **ivsr_reconfig**
+
+Reset and re-config iVSR environment.
+
+**Syntax**
+
+```C
+IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs); 
 ```
 
-3. Install DKMS kernel modules
+**Parameters**
 
-```bash
-sudo apt-get install -y intel-platform-vsec-dkms intel-platform-cse-dkms
-sudo apt-get install -y intel-i915-dkms intel-fw-gpu
-sudo reboot	
+- `handle` A handle for VSR processing.
+- `configs`  Configurations to reset the VSR environment.
+
+**Description**
+
+ The method reconfigures the VSR environment.
+
+**Return Values**
+
+`IVSRStatus`	Return a status to indicate whether reconfiguration is successful or not.
+
+
+#### **ivsr_get_attr**
+
+Get the iVSR properties/attributes.
+
+**Syntax**
+
+```C
+IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value); 
 ```
 
-If you get problems when installing DKMS, try to remove all the other unused kernels. 
+**Parameters**
+
+- `handle` A handle for VSR processing.  
+- `key` Name of a attribute/property.
+- `value` Value of the attribute got by key.
+
+**Description**
+
+This method is used to get the properties/attributes of the VSR environment that the user wants to know about.
+
+**Return Values**
+
+`IVSRStatus`	Return the a status to indicate whether the attribute is got successfully.
 
 
+#### **ivsr_deinit**
 
-## Build Docker Image
-1. Set git config
-Please set your git config user.name&email before installation, or our patches will not be applied automatically.
+De-initialize the resources allocated for the iVSR environment.
 
-```
-git config user.name [your name]
-git config user.email [your email]
-```
+**Syntax**
 
-Docker installation.  ==NEED TO REFINE!==
-
-2. Set date&time correctly before building docker image, the following command takes Shanghai as an example.
-
-  ```bash
-  timedatectl set-timezone Asia/Shanghai
-  ```
-
-3. Set up docker service
-
-```bash
-sudo mkdir -p /etc/systemd/system/docker.service.d \
-printf "[Service]\nEnvironment=\"HTTPS_PROXY=$https_proxy\" \"NO_PROXY=$no_proxy\"\n" | sudo tee  /etc/systemd/system/docker.service.d/proxy.conf \
-sudo systemctl daemon-reload \
-sudo systemctl restart docker 
+```C
+IVSRStatus ivsr_deinit(ivsr_handle handle); 
 ```
 
-4. Build docker image
+**Parameters**
 
-```bash
-cd ivsr_sdk/
-./build_docker.sh
-```
+`handle` A handle for VSR processing.   
 
-If building successfully, you can see a docker image named `ivsr_sdk` .
+**Description**
 
+The method deinitializes the handle and releases the resources allocated for iVSR process.
 
 
-## Start Docker Container
+**Return Values**
 
-```bash
-sudo docker run -itd --name ivsr_sdk --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/snd:/dev/snd    ivsr_sdk:latest bash
-sudo docker exec -it ivsr_sdk bash
-```
+`IVSRStatus`	Return the a status to indicate whether VSR deinitialization is successful.
+
+<br />
+
+##  **VSR Sample**
 
 
-## Run VSR Sample in the Docker Container 
+There is a simple C++ sample to perform BasicVSR inference on OpenVINO backend. You can reach the sample from `/workspace/ivsr/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
 
-Run the VSR sample `/workspace/ivsr/ivsr_sdk/build/samples/vsr_sample` on different devices with the following commands.
+|Option name|Desciption|Default value|Recommended value(s)|
+|:--|:--|:--|:--|
+|h|Print Help Message|||
+|cldnn_config|Required. Path of CLDNN config.|None|< Path to OpenVINO >/flow_warp_custom_op/flow_warp.xml|
+|data_path|Required. Input data path for inference.|None||
+|device|Optional. Device to perform inference.|CPU|CPU or GPU or MULTI:GPU.0,GPU.1|
+|extension|Optional. Extension (.so or .dll) path of custom operation.|None|< Path to basicvsr_sample>/lib/libcustom_extension.so|
+|model_path|Required. Path of BasicVSR OpenVINO IR model (.xml).|None||
+|nig|Optional. Number of input groups for inference.|1||
+|save_path|Optional. Path to save predictions.|./outputs|If use the default value, make sure default path exists.|
+|save_predictions|Optional. Whether to save the results to save_path.|false|If this option exists, results will be saved.|
+
+Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR inference on different devices:
 
 ```bash
 # VSR sample on CPU
@@ -135,34 +190,25 @@ Run the VSR sample `/workspace/ivsr/ivsr_sdk/build/samples/vsr_sample` on differ
 # VSR sample on Multiple-GPUs
 ./vsr_sample --model_path=[your model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
 ```
-You can refer to [VSR Sample](./Introduction.md) for more details.
+
+<br />
+
+##  **Test Cases**
 
 
+There are some unit tests for the iVSR API. You can reach the unit tests from "`/workspace/ivsr/ivsr_sdk/bin/vsr_unit_test`". Since model is essential for inference, you need to prepare models (*.bin and *.xml ) to the same path of `vsr_unit_test` and rename the model files to " test_with_custom_op.xml" and " test_with_custom_op.bin".
 
-## FAQ
-
-:pushpin: Debconf: unable to initialize frontend: Dialog
-
-Add `ENV DEBIAN_FRONTEND noninteractive` into the Dockerfile under the folder `ivsr_sdk`.
-
-:pushpin: Failed to pull ubuntu22.04 while building docker image 
-
-Check your docker source setting, which is often in `/etc/docker/daemon.json`. You can also take a work around method by running `docker pull ubuntu:22.04`. Add the following lines in `/etc/docker/daemon.json`, then restart docker service with command `systemctl restart docker`.
-
-```json
-{
-"insecure-registries":["dcsorepo.jf.intel.com","amr-registry.caas.intel.com","10.67.115.138:8083","10.67.115.33:8082"],
-"experimental":true
-}
-```
-
-:pushpin: Can not connect to repositories when add-apt-repository
-
-May need to add proxy for apt.
+You can perform unit tests by runing the following command:
 
 ```bash
-sudo vim /etc/apt/apt.conf.d/proxy.conf
-## add proxy 
-Acquire::http::Proxy "[your proxy server address]:[your proxy server ip]";
-Acquire::https::Proxy "[your proxy server address]:[your proxy server ip]";
+./vsr_unit_test
 ```
+
+Then you can obtain the test results with status <font color="#00dd00">PASSED</font> or <font color="#dd0000">FAILED</font>.
+
+<br />
+
+## **Set Up**
+
+A Dockerfile is provided to set up the environment quickly and easily. You can refer to [Environment Set Up](./ENVIRONMENT.md) for details.
+
