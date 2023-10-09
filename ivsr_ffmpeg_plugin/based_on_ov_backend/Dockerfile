@@ -141,7 +141,7 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/*
 
 # build ffmepg
-ARG FFMPEG_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin
+ARG FFMPEG_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ov_backend
 ARG FFMPEG_DIR=${FFMPEG_PLUGIN_DIR}/ffmpeg
 RUN cd ${FFMPEG_PLUGIN_DIR} && \
   cp ${FFMPEG_PLUGIN_DIR}/patches/*.patch ${FFMPEG_DIR}/ && \

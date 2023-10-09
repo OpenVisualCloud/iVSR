@@ -33,7 +33,7 @@ git submodule update --remote --recursive
 - Build docker image
 ```
 cd ivsr_ffmpeg_plugin
-sudo docker build -f Dockerfile -t ffmpeg-ov1 ..
+sudo docker build -f Dockerfile -t ffmpeg-ov1 ../../
 ```
 If the image is built successfully, you can find a docker image named `ffmpeg-ov1:latest` with command `docker images`.
 
@@ -49,7 +49,7 @@ The above command lines will start a docker container named `ffmpeg-ov1`.
 ## How to run BasicVSR inference with FFmpeg-plugin
 - Use FFmpeg-plugin to run BasicVSR inference
 ```
-cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ov_backend/ffmpeg
 ./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=openvino:model=<your model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
 ```
 
