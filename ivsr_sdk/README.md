@@ -179,6 +179,7 @@ There is a simple C++ sample to perform BasicVSR inference on OpenVINO backend. 
 |nig|Optional. Number of input groups for inference.|1||
 |save_path|Optional. Path to save predictions.|./outputs|If use the default value, make sure default path exists.|
 |save_predictions|Optional. Whether to save the results to save_path.|false|If this option exists, results will be saved.|
+|scale_factor|Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).|2|For image enhancement model and if no resolution change, please set to 1.|
 
 Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR inference on different devices:
 

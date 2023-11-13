@@ -25,6 +25,7 @@ const std::string keys =
     "{save_path         |./outputs| Optional. Path to a folder to save predictions.}"
     "{cldnn_config      | | Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
     "{nig               |1| Optional. Number of input data groups for inference. }"
+    "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
    ;
 
 bool checkPath(std::string path){
@@ -167,7 +168,7 @@ bool commandLineCheck(int argc, char**argv,std::string keys){
 int main(int argc, char** argv){
     // -------- Parsing and validation of input arguments --------
     cv::CommandLineParser parser(argc, argv, keys);
-    if (parser.has("h"))
+    if (parser.has("h") || argc == 1)
     {
         parser.printMessage();
         return 0;
@@ -180,7 +181,7 @@ int main(int argc, char** argv){
     std::string save_path = parser.get<std::string>("save_path");
 
     // vsr scale
-    int scaleFactor = 2;
+    int scaleFactor = parser.get<int>("scale_factor");
 
     if (!parser.check() || !commandLineCheck(argc,argv,keys))
     {
