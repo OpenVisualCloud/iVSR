@@ -1,0 +1,227 @@
+<?xml version="1.0"?>
+<mapping>
+	<map>
+		<framework name="input" output_port_id="input" />
+		<IR name="input" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="rgb2y.weight" output_port_id="rgb2y.weight" />
+		<IR name="rgb2y.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/Mul" output_port_id="/Mul_output_0" />
+		<IR name="/Mul" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="Constant_1" output_port_id="onnx::ReduceSum_23" />
+		<IR name="Constant_1" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/ReduceSum" output_port_id="/ReduceSum_output_0" />
+		<IR name="/ReduceSum" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="raw_size_pre.0.weight" output_port_id="raw_size_pre.0.weight" />
+		<IR name="raw_size_pre.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/raw_size_pre/raw_size_pre.0/Conv" output_port_id="/raw_size_pre/raw_size_pre.0/Conv_output_0" />
+		<IR name="/raw_size_pre/raw_size_pre.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="onnx::PRelu_212" output_port_id="onnx::PRelu_212" />
+		<IR name="onnx::PRelu_212" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/raw_size_pre/raw_size_pre.1/PRelu" output_port_id="/down_convs.0/down_convs.0.0/Pad_output_0" />
+		<IR name="/raw_size_pre/raw_size_pre.1/PRelu" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/raw_size_pre/raw_size_pre.1/PRelu" output_port_id="/raw_size_pre/raw_size_pre.1/PRelu_output_0" />
+		<IR name="/raw_size_pre/raw_size_pre.1/PRelu" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/down_convs.0/down_convs.0.0/AveragePool" output_port_id="/down_convs.0/down_convs.0.0/AveragePool_output_0" />
+		<IR name="/down_convs.0/down_convs.0.0/AveragePool" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Pad" output_port_id="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Pad_output_0" />
+		<IR name="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="down_convs.0.1.0.weight" output_port_id="down_convs.0.1.0.weight" />
+		<IR name="down_convs.0.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Conv" output_port_id="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Conv_output_0" />
+		<IR name="/down_convs.0/down_convs.0.1/down_convs.0.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/down_convs.0/down_convs.0.1/down_convs.0.1.1/Relu" output_port_id="/down_convs.1/down_convs.1.0/Pad_output_0" />
+		<IR name="/down_convs.0/down_convs.0.1/down_convs.0.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.0/down_convs.0.1/down_convs.0.1.1/Relu" output_port_id="/down_convs.0/down_convs.0.1/down_convs.0.1.1/Relu_output_0" />
+		<IR name="/down_convs.0/down_convs.0.1/down_convs.0.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.1/down_convs.1.0/AveragePool" output_port_id="/down_convs.1/down_convs.1.0/AveragePool_output_0" />
+		<IR name="/down_convs.1/down_convs.1.0/AveragePool" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Pad" output_port_id="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Pad_output_0" />
+		<IR name="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="down_convs.1.1.0.weight" output_port_id="down_convs.1.1.0.weight" />
+		<IR name="down_convs.1.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Conv" output_port_id="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Conv_output_0" />
+		<IR name="/down_convs.1/down_convs.1.1/down_convs.1.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/down_convs.1/down_convs.1.1/down_convs.1.1.1/Relu" output_port_id="/down_convs.2/down_convs.2.0/Pad_output_0" />
+		<IR name="/down_convs.1/down_convs.1.1/down_convs.1.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.1/down_convs.1.1/down_convs.1.1.1/Relu" output_port_id="/down_convs.1/down_convs.1.1/down_convs.1.1.1/Relu_output_0" />
+		<IR name="/down_convs.1/down_convs.1.1/down_convs.1.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.2/down_convs.2.0/AveragePool" output_port_id="/down_convs.2/down_convs.2.0/AveragePool_output_0" />
+		<IR name="/down_convs.2/down_convs.2.0/AveragePool" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Pad" output_port_id="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Pad_output_0" />
+		<IR name="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="down_convs.2.1.0.weight" output_port_id="down_convs.2.1.0.weight" />
+		<IR name="down_convs.2.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Conv" output_port_id="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Conv_output_0" />
+		<IR name="/down_convs.2/down_convs.2.1/down_convs.2.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/down_convs.2/down_convs.2.1/down_convs.2.1.1/Relu" output_port_id="/down_convs.2/down_convs.2.1/down_convs.2.1.1/Relu_output_0" />
+		<IR name="/down_convs.2/down_convs.2.1/down_convs.2.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/up_convs.0/up_convs.0.0/Constant" output_port_id="/up_convs.0/up_convs.0.0/Constant_output_0" />
+		<IR name="/up_convs.0/up_convs.0.0/Constant" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.0/up_convs.0.0/Resize" output_port_id="/up_convs.0/up_convs.0.0/Resize_output_0" />
+		<IR name="/up_convs.0/up_convs.0.0/Resize" output_port_id="3" />
+	</map>
+	<map>
+		<framework name="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Pad" output_port_id="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Pad_output_0" />
+		<IR name="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="up_convs.0.1.0.weight" output_port_id="up_convs.0.1.0.weight" />
+		<IR name="up_convs.0.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Conv" output_port_id="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Conv_output_0" />
+		<IR name="/up_convs.0/up_convs.0.1/up_convs.0.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/up_convs.0/up_convs.0.1/up_convs.0.1.1/Relu" output_port_id="/up_convs.0/up_convs.0.1/up_convs.0.1.1/Relu_output_0" />
+		<IR name="/up_convs.0/up_convs.0.1/up_convs.0.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/Concat" output_port_id="/Concat_output_0" />
+		<IR name="/Concat" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/up_convs.1/up_convs.1.0/Constant" output_port_id="/up_convs.1/up_convs.1.0/Constant_output_0" />
+		<IR name="/up_convs.1/up_convs.1.0/Constant" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.1/up_convs.1.0/Resize" output_port_id="/up_convs.1/up_convs.1.0/Resize_output_0" />
+		<IR name="/up_convs.1/up_convs.1.0/Resize" output_port_id="3" />
+	</map>
+	<map>
+		<framework name="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Pad" output_port_id="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Pad_output_0" />
+		<IR name="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="up_convs.1.1.0.weight" output_port_id="up_convs.1.1.0.weight" />
+		<IR name="up_convs.1.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Conv" output_port_id="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Conv_output_0" />
+		<IR name="/up_convs.1/up_convs.1.1/up_convs.1.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/up_convs.1/up_convs.1.1/up_convs.1.1.1/Relu" output_port_id="/up_convs.1/up_convs.1.1/up_convs.1.1.1/Relu_output_0" />
+		<IR name="/up_convs.1/up_convs.1.1/up_convs.1.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/Concat_1" output_port_id="/Concat_1_output_0" />
+		<IR name="/Concat_1" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/up_convs.2/up_convs.2.0/Constant" output_port_id="/up_convs.2/up_convs.2.0/Constant_output_0" />
+		<IR name="/up_convs.2/up_convs.2.0/Constant" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.2/up_convs.2.0/Resize" output_port_id="/up_convs.2/up_convs.2.0/Resize_output_0" />
+		<IR name="/up_convs.2/up_convs.2.0/Resize" output_port_id="3" />
+	</map>
+	<map>
+		<framework name="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Pad" output_port_id="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Pad_output_0" />
+		<IR name="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Pad" output_port_id="4" />
+	</map>
+	<map>
+		<framework name="up_convs.2.1.0.weight" output_port_id="up_convs.2.1.0.weight" />
+		<IR name="up_convs.2.1.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Conv" output_port_id="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Conv_output_0" />
+		<IR name="/up_convs.2/up_convs.2.1/up_convs.2.1.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/up_convs.2/up_convs.2.1/up_convs.2.1.1/Relu" output_port_id="/up_convs.2/up_convs.2.1/up_convs.2.1.1/Relu_output_0" />
+		<IR name="/up_convs.2/up_convs.2.1/up_convs.2.1.1/Relu" output_port_id="1" />
+	</map>
+	<map>
+		<framework name="/Concat_2" output_port_id="/Concat_2_output_0" />
+		<IR name="/Concat_2" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="raw_size_post.0.weight" output_port_id="raw_size_post.0.weight" />
+		<IR name="raw_size_post.0.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/raw_size_post/raw_size_post.0/Conv" output_port_id="/raw_size_post/raw_size_post.0/Conv_output_0" />
+		<IR name="/raw_size_post/raw_size_post.0/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="onnx::PRelu_246" output_port_id="onnx::PRelu_246" />
+		<IR name="onnx::PRelu_246" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/raw_size_post/raw_size_post.1/PRelu" output_port_id="/raw_size_post/raw_size_post.1/PRelu_output_0" />
+		<IR name="/raw_size_post/raw_size_post.1/PRelu" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="out_conv.weight" output_port_id="out_conv.weight" />
+		<IR name="out_conv.weight" output_port_id="0" />
+	</map>
+	<map>
+		<framework name="/out_conv/Conv" output_port_id="/out_conv/Conv_output_0" />
+		<IR name="/out_conv/Conv" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="/Add" output_port_id="/Add_output_0" />
+		<IR name="/Add" output_port_id="2" />
+	</map>
+	<map>
+		<framework name="output" output_port_id="output" />
+		<IR name="output" output_port_id="1" />
+	</map>
+</mapping>

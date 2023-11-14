@@ -10,6 +10,8 @@
 #include "ov_engine.hpp"
 #include "utils.hpp"
 
+#include <irguard.hpp>
+
 typedef std::chrono::high_resolution_clock Time;
 
 IBasicVSRStatus ov_engine::init()
@@ -21,7 +23,25 @@ IBasicVSRStatus ov_engine::init()
         instance_.set_property(item.first, item.second);
     }
     //read model
-    std::shared_ptr<ov::Model> model = instance_.read_model(model_path_);
+    std::shared_ptr<ov::Model> model;
+    std::vector<char> bin_buffer;
+    try {
+        model = instance_.read_model(model_path_);
+    } catch (const std::exception& e) {
+        // Try private method
+        std::vector<char> packed_buffer;
+        std::vector<char> xml_buffer;
+        long expiration = 0;
+
+        if (irguard::load_file_to_buffer(model_path_, packed_buffer) != irguard::OK) {
+            std::cerr << "Failed to load " << model_path_ << "." << std::endl;
+            exit(-1);
+        }
+        expiration = irguard::unpack(packed_buffer, xml_buffer, bin_buffer);
+
+        std::string str_model(xml_buffer.begin(), xml_buffer.end());
+        model = instance_.read_model(str_model, ov::Tensor(ov::element::u8, {bin_buffer.size()}, bin_buffer.data()));
+    }
 
     input_ = model->input();
     output_ = model->output();
