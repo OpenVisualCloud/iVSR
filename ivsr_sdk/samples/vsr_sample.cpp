@@ -26,7 +26,7 @@ const std::string keys =
     "{cldnn_config      | | Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
     "{nig               |1| Optional. Number of input data groups for inference. }"
     "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
-    "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}
+    "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
    ;
 
 bool checkPath(std::string path){
