@@ -9,6 +9,7 @@
 #include <cstring>
 #include "ov_engine.hpp"
 #include "utils.hpp"
+#include "omp.h"
 
 #include <irguard.hpp>
 
@@ -95,7 +96,12 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
 
         //TODO: better way to do it to reduce memory copy.
         //reinvestigae openvino API for buffer sharing or expose the output buffer pointer to application
-        std::memcpy(cbTask->outputPtr_, (char*)output_tensor.data(), size);
+        //std::memcpy(cbTask->outputPtr_, (char*)output_tensor.data(), size);
+        omp_set_num_threads(12);
+        #pragma omp parallel for 
+        for(int i = 0; i < 12; i++) {
+            std::memcpy(cbTask->outputPtr_ + i * size / 12, (char*)output_tensor.data() + i * size / 12,  size / 12);
+        }
 
 #ifdef ENABLE_LOG
         std::cout << "[Trace]: " << "infer request callback: Memory Copy Finsihed!" << std::endl;
@@ -133,19 +139,32 @@ IBasicVSRStatus ov_engine::get_attr(const std::string key, void* value) {
     if(key == "model_inputs"){
         ov::Shape* input_shape = (ov::Shape*) value;
         auto shape = input_.get_shape();
+        //@djx add for edsr
+        if(shape.size() < 5)
+            shape.insert(shape.begin(), 1);
         *input_shape = shape;
     }
     else if(key == "model_outputs"){
         ov::Shape* output_shape = ( ov::Shape* ) value;
-        * output_shape = output_.get_shape();
+        //@djx add for edsr 
+        auto shape = output_.get_shape();
+        if(shape.size() < 5)
+            shape.insert(shape.begin(), 1);
+        *output_shape = shape;
     }
     else if(key == "input_dims"){
         auto input_shape = input_.get_shape();
+        //@djx add for edsr
+        if(input_shape.size() < 5)
+            input_shape.insert(input_shape.begin(), 1);
         int* dims = (int*) value;
         (*dims) = input_shape.size();
     }
     else if(key == "output_dims"){
         auto output_shape = output_.get_shape();
+        //@djx add for edsr
+        if(output_shape.size() < 5)
+            output_shape.insert(output_shape.begin(), 1);
         int* dims = (int*) value;
         (*dims) = output_shape.size();
     }

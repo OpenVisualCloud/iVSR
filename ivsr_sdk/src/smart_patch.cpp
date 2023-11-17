@@ -2,6 +2,8 @@
 #include<cmath>
 #include<stdlib.h>
 #include<unistd.h>
+#include "omp.h"
+#include<string.h>
 
 
 std::vector<std::vector<int>> calculatePatchCoordinateList(int oriH, int oriW, int cropSize[], int blockSize[]){
@@ -150,10 +152,76 @@ SmartPatch::SmartPatch(PatchConfig config, char* inBuf, char* outBuf, std::vecto
             
         }
     }
+#ifdef ENABLE_THREADPROCESS
+void mem_cp(float* img_Start, float* patch_Start, int niter, size_t n, int pW, int W, bool fill_p) {
+    if(fill_p) {
+        for(int i =0 ; i < niter; i++) {
+            memcpy(patch_Start + i * pW , img_Start + i * W, n * sizeof(float));
+        }
+    }
+    else {
+        for(int i =0 ; i < niter; i++) {
+            memcpy(img_Start + i * W, patch_Start + i * pW, n * sizeof(float)); //TODO only copy not consider average
+        }
+    }
+}
+#endif
+
+#ifdef ENABLE_THREADPROCESS
+void multithread_p_5w(float* inputBuf, float* patchBuf, std::vector<int> inputDims, int patchSize[], bool fill_p) {
+    if(inputDims.size() < 5){
+        std::cout<<"Error: expected inputs in 5 dims(B,N,C,H,W), but got "<< inputDims.size() <<"dims." <<std::endl;
+        return;
+    }
+    int B = inputDims[0], N = inputDims[1], C = inputDims[2], H = inputDims[3], W = inputDims[4];
+    int pH = patchSize[0], pW = patchSize[1];
+
+    int c_thr = C;
+    int b_thr = B;
+    int n_thr = N;
+    int h_thr = 1;
+    int blockSize[] = {ceil(H * 1.0 / pH), ceil(W * 1.0/ pW)};
+    int p_thr = blockSize[0] * blockSize[1];
+
+    int innerH_iter_ = pH / h_thr;
+    omp_set_num_threads(p_thr * c_thr * h_thr * b_thr * n_thr);
+    //omp_set_num_threads(1);
+    #pragma omp parallel for 
+    for(int i = 0; i < p_thr * c_thr * h_thr * b_thr * n_thr; i++) {
+        int innerH_iter = innerH_iter_;
+        float* patch = patchBuf;
+
+        int idx_B = i / (p_thr * c_thr * h_thr * n_thr);
+        int idx_N = (i % (p_thr * c_thr * h_thr * n_thr )) / (p_thr * c_thr * h_thr );
+        int idx_C = (i % (p_thr * c_thr * h_thr)) / (p_thr * h_thr);
+        int idx_P = (i % (p_thr * h_thr)) / h_thr;
+        int y_cor = idx_P % blockSize[1];
+        int x_cor = idx_P / blockSize[1];
+        int interHeight = (pH * blockSize[0] - H) / (blockSize[0] - 1);
+        int interWidth = (pW * blockSize[1] - W) / (blockSize[1] - 1);
+        int offset_in_image = x_cor * (pH - interHeight) * W + y_cor * (pW - interWidth);
+        int offset = idx_B * H * W * C * N + idx_N * H * W * C + idx_C * H * W + offset_in_image;
+        float* ptr_P = inputBuf + offset;
+        
+        //int lastFillHeight = (pH * blockSize[0] - H) % (blockSize[0] - 1); //TODO: need consider
+        
+        int h_index = i % h_thr;
+        float* ptr_Start = ptr_P + (h_index * innerH_iter) * W; // calculate img thread ptr
+
+        int patch_offset = idx_P * C * pH * pW * N * B + idx_B * C * pH * pW * N + idx_N * C * pH * pW + idx_C * pW * pH;
+        float* patch_P = patch + patch_offset;
+        float* patch_Start = patch_P + (i % h_thr) * innerH_iter * pW;
 
 
+        mem_cp(ptr_Start, patch_Start, innerH_iter, pW, pW, W, fill_p); //copy 1920 one-time
+    }
+}
+#endif
 
 IBasicVSRStatus SmartPatch::generatePatch(){
+#ifdef ENABLE_PERF
+    auto my_tmpStartTime = Time::now();
+#endif
     // no patch division
     if (!flag){
         _patchInputPtrList.push_back(_inputPtr);
@@ -168,38 +236,63 @@ IBasicVSRStatus SmartPatch::generatePatch(){
     int patchSize[] = {_config.patchHeight, _config.patchWidth};
     int blockSize[] = {ceil((inputHeight) * 1.0 / _config.patchHeight), ceil(inputWidth * 1.0 / _config.patchWidth)};
     _config.block_h = blockSize[0], _config.block_w = blockSize[1]; 
-    std::vector<std::vector<int>> patchCoorList = calculatePatchCoordinateList(inputHeight, inputWidth, patchSize, blockSize);
     std::vector<int> inputDims = _inputShape; //{1,3,3,1080,1920} // from where?
+    
+
+#ifdef ENABLE_THREADPROCESS
+    multithread_p_5w((float*)_inputPtr, _patchInputPtr, inputDims, patchSize, true);
+    for(int i = 0; i < 4; i++) {
+        _patchInputPtrList.push_back((char*)(_patchInputPtr + i * (inputDims[0] * inputDims[1] * inputDims[2] * patchSize[0] * patchSize[1])));
+    }
+#else
     float* patchBuf = _patchInputPtr;
+    std::vector<std::vector<int>> patchCoorList = calculatePatchCoordinateList(inputHeight, inputWidth, patchSize, blockSize);
     for (auto patchCorners: patchCoorList){
         _patchInputPtrList.push_back((char*)patchBuf);
         auto patchPtr = fill_patch(patchCorners,(float*)_inputPtr, inputDims, patchBuf);
         patchBuf = patchPtr;
     }
+#endif
 
     // -generate patches for output buffer to reserve patch output
     int inferOutHeight = inputHeight * _config.scale, inferOutWidth = inputWidth * _config.scale;
     int patchOutHeight = _config.patchHeight * _config.scale, patchOutWidth = _config.patchWidth * _config.scale;
     int outPatchSize[] = {patchOutHeight, patchOutWidth};
-    int outBlockSize[] = {ceil(inferOutHeight*1.0/patchOutHeight), ceil(inferOutWidth*1.0/patchOutWidth)};
-    std::vector<std::vector<int>> outPatchCoorList = calculatePatchCoordinateList(inferOutHeight, inferOutWidth, outPatchSize, outBlockSize);
     float* outPatchBuf = _patchOutputPtr;
     std::vector<int> outputDims(_inputShape);
     *(outputDims.end() - 2) = inferOutHeight, *(outputDims.end() - 1) = inferOutWidth; // {1,3,3,2160,3840}
+
+#ifdef ENABLE_THREADPROCESS
+    for(int i = 0; i < 4; i++) {
+        _patchOutputPtrList.push_back((char*)(outPatchBuf + i * (outputDims[0] * outputDims[1] * outputDims[2] * outPatchSize[0] * outPatchSize[1])));
+    }
+#else
+    int outBlockSize[] = {ceil(inferOutHeight*1.0/patchOutHeight), ceil(inferOutWidth*1.0/patchOutWidth)};
+    std::vector<std::vector<int>> outPatchCoorList = calculatePatchCoordinateList(inferOutHeight, inferOutWidth, outPatchSize, outBlockSize);
     for (auto patchCorners: outPatchCoorList){
         _patchOutputPtrList.push_back((char*)outPatchBuf);
         auto patchPtr = fill_patch(patchCorners,_patchOutputPtr, outputDims, outPatchBuf);
         outPatchBuf = patchPtr;
     }
+#endif
 
     if(_patchOutputPtrList.size()!=_patchInputPtrList.size()){
         return ERROR;
     }
 
+#ifdef ENABLE_PERF    
+    auto my_tmp_duration = get_duration_ms_till_now(my_tmpStartTime);
+    std::cout << "[PERF] " << "fill_patch latency: " << double_to_string(my_tmp_duration) <<"ms"<<std::endl;
+#endif
+    
     return SUCCESS;
+    
 }
 
 IBasicVSRStatus SmartPatch::restoreImageFromPatches(){
+#ifdef ENABLE_PERF
+    auto my_tmpStartTime = Time::now();
+#endif
     // image solution
     if(!flag){
         return SUCCESS;
@@ -210,10 +303,14 @@ IBasicVSRStatus SmartPatch::restoreImageFromPatches(){
     int inferOutHeight = inputHeight * _config.scale, inferOutWidth = inputWidth * _config.scale;
     int patchOutHeight = _config.patchHeight * _config.scale, patchOutWidth = _config.patchWidth * _config.scale;
     int outPatchSize[] = {patchOutHeight, patchOutWidth};
-    int outBlockSize[] = {ceil(inferOutHeight * 1.0 / patchOutHeight), ceil(inferOutWidth * 1.0 / patchOutWidth)};
     std::vector<int> imgDims(_inputShape);    // 1x3x3x2160x3840 
-    std::vector<int> patchDims(_inputShape);  // 1x3x3x400x700 
     *(imgDims.end() - 2) = inferOutHeight, *(imgDims.end() - 1) = inferOutWidth;
+
+#ifdef ENABLE_THREADPROCESS
+    multithread_p_5w((float*)_outputPtr, (float*)_patchOutputPtrList[0], imgDims, outPatchSize, false);
+#else
+    int outBlockSize[] = {ceil(inferOutHeight * 1.0 / patchOutHeight), ceil(inferOutWidth * 1.0 / patchOutWidth)};
+    std::vector<int> patchDims(_inputShape);  // 1x3x3x400x700 
     *(patchDims.end() - 2) = patchOutHeight, *(patchDims.end() - 1) = patchOutWidth;
 
     // get the patch division coordinates
@@ -221,6 +318,12 @@ IBasicVSRStatus SmartPatch::restoreImageFromPatches(){
 
     // restore image according to patch pointer list and patch coordinate list
     fill_image(outPatchCoorList,_outputPtr,patchDims,imgDims,_patchOutputPtrList);
+#endif
+
+#ifdef ENABLE_PERF   
+    auto my_tmp_duration = get_duration_ms_till_now(my_tmpStartTime);
+    std::cout << "[PERF] " << "fill_image latency: " << double_to_string(my_tmp_duration) <<"ms"<<std::endl;
+#endif 
 
     return SUCCESS;
 }

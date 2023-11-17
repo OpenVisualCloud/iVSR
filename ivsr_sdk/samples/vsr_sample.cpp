@@ -25,7 +25,8 @@ const std::string keys =
     "{save_path         |./outputs| Optional. Path to a folder to save predictions.}"
     "{cldnn_config      | | Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
     "{nig               |1| Optional. Number of input data groups for inference. }"
-    "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
+    "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
+    "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}
    ;
 
 bool checkPath(std::string path){
@@ -179,6 +180,8 @@ int main(int argc, char** argv){
     std::string help = parser.get<std::string>("h");
     bool save_predictions = parser.get<bool>("save_predictions");
     std::string save_path = parser.get<std::string>("save_path");
+    float normalize_factor = parser.get<float>("normalize_factor");
+
 
     // vsr scale
     int scaleFactor = parser.get<int>("scale_factor");
@@ -283,7 +286,7 @@ int main(int argc, char** argv){
         /* how to check image size and model input? */
 
         // refer to cv::dnn::blobFromImages
-        cv::Mat inputNCHW = blobFromImages(inMatList, 1.0/255, true);
+        cv::Mat inputNCHW = blobFromImages(inMatList, 1.0/normalize_factor, true);
         int sz[] = { 1, nif, 3, oriHeight, oriWidth };
         cv::Mat inputImg(5, sz, CV_32F, (char *)inputNCHW.data);
         inputDataList.push_back(inputImg.clone());
@@ -339,7 +342,7 @@ int main(int argc, char** argv){
         for (int idx = 0; idx < outputDataList.size(); idx++){
             // 5. post process and save outputs
             auto outputImg = outputDataList[idx];
-            outputImg.convertTo(outputImg, CV_8U, 255.0);
+            outputImg.convertTo(outputImg, CV_8U, normalize_factor);
             int nchwSize[] = {nif, 3, oriHeight * scaleFactor, oriWidth * scaleFactor};
             cv::Mat outputNCHW(4, nchwSize, CV_8U, (void *)outputImg.data);
             std::vector<cv::Mat> outMatList;
