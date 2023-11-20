@@ -29,7 +29,7 @@ std::vector<std::string> parse_devices(const std::string& device_string) {
     return result;
 }
 
-void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string device, std::string cldnn_config){
+void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string device, std::string infer_precision, std::string cldnn_config){
     auto getDeviceTypeFromName = [](std::string device) -> std::string {
         return device.substr(0, device.find_first_of(".("));
     };
@@ -74,7 +74,8 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
     }
     // update config per device
     int nstream = 1; // set nstream = 1 for GPU what about CPU?
-    std::string infer_precision = "f32"; // set infer precision to f32
+    //std::string infer_precision = "f32"; // set infer precision to f32
+    //std::string infer_precision = "f16"; // set infer precision to f32
     for (auto& d : devices) {
         auto& device_config = config[d];
         // set throughput streams and infer precision for hardwares
@@ -119,7 +120,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
 
     //TODO: replace w/ parseConfig() ??
     // 1.parse input config
-    std::string model = "", device = "", batch = "";
+    std::string model = "", device = "", batch = "", infer_precision = "";
     std::string verbose = "", custom_lib = "", cldnn_config = "";
     while(configs!=nullptr){
         IVSRStatus unsupported_status = IVSRStatus::OK;
@@ -157,6 +158,21 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                     unsupported_output.append("CLDNN_CONFIG").append("=").append(configs->value);
                 }
                 break;
+            case IVSRConfigKey::PRECISION:
+                infer_precision = configs->value;
+                if(device.find("GPU") != std::string::npos){
+                    if(infer_precision.compare("f32") != 0 && infer_precision.compare("f16") != 0){
+                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"for PRECISION=");
+                        return IVSRStatus::UNSUPPORTED_CONFIG;
+                    }
+                }else{
+                    if(infer_precision.compare("f32") != 0 && infer_precision.compare("bf16") != 0){
+                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"for PRECISION=");
+                        return IVSRStatus::UNSUPPORTED_CONFIG;
+                    }
+                }
+                std::cout << "[INFO] " << "PRECISION:" << infer_precision << std::endl;
+                break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
                 unsupported_output.append(std::to_string(configs->key));
@@ -177,7 +193,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     */
     // 2.parse config for inference engine
     std::map<std::string, ov::AnyMap> engine_configs;
-    parse_engine_config(engine_configs,device,cldnn_config);
+    parse_engine_config(engine_configs,device,infer_precision,cldnn_config);
 
     // 3.construct and initialization
     // - initialize inference engine

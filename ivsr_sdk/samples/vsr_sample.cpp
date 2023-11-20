@@ -27,6 +27,7 @@ const std::string keys =
     "{nig               |1| Optional. Number of input data groups for inference. }"
     "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
+    "{precision         |f32| Required for inference precision.}"
    ;
 
 bool checkPath(std::string path){
@@ -206,8 +207,9 @@ int main(int argc, char** argv){
         std::cout << "Please confirm your path is existed and does NOT end with '/' " << std::endl;
         return -1;
     }
+
     // 1. set ivsr config
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr;
+    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr, *config_precision = nullptr;
 
     ivsr_config_t *config = new ivsr_config_t();
     // - required configs
@@ -224,13 +226,20 @@ int main(int argc, char** argv){
     config->next = config_device;
 
     // - optional configs
+    std::string precision = parser.get<std::string>("precision");
+    config_precision= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
+    config_precision->key = IVSRConfigKey::PRECISION;
+    config_precision->value = precision.c_str();
+    config_precision->next = nullptr;
+    config_device->next = config_precision;
+
     std::string extension = parser.get<std::string>("extension");
     if (extension != "") {
         config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
         config_customlib->next = nullptr;
         config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
         config_customlib->value = extension.c_str();
-        config_device->next = config_customlib;
+        config_precision->next = config_customlib;
     }
     
     std::string cldnn_config = parser.get<std::string>("cldnn_config");

@@ -57,7 +57,8 @@ typedef enum {
     VERBOSE_LEVEL = 0x4,
     CUSTOM_LIB    = 0x5,
     CLDNN_CONFIG  = 0x6,
-    NUM_IFER_REQUEST = 0x7
+    NUM_IFER_REQUEST = 0x7,
+    PRECISION = 0x8
 }IVSRConfigKey;
 
 typedef enum {
