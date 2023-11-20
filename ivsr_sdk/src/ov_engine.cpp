@@ -34,11 +34,23 @@ IBasicVSRStatus ov_engine::init()
         std::vector<char> xml_buffer;
         long expiration = 0;
 
+        if (irguard::system_conf_check() != irguard::OK) {
+            std::cerr << "Please contact the provider!" << std::endl;
+            exit(-1);
+        }
+
         if (irguard::load_file_to_buffer(model_path_, packed_buffer) != irguard::OK) {
             std::cerr << "Failed to load " << model_path_ << "." << std::endl;
             exit(-1);
         }
         expiration = irguard::unpack(packed_buffer, xml_buffer, bin_buffer);
+        auto now =
+            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+                .count();
+        if (expiration - now < 0) {
+            std::cerr << "The model is out of date. Please contact the provider!" << std::endl;
+            exit(-1);
+        }
 
         std::string str_model(xml_buffer.begin(), xml_buffer.end());
         model = instance_.read_model(str_model, ov::Tensor(ov::element::u8, {bin_buffer.size()}, bin_buffer.data()));
