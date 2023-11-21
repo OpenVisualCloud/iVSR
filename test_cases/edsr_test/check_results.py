@@ -29,9 +29,9 @@ def main():
     input_md5 = img_to_md5(input_path)
     output_md5 = img_to_md5(output_path)
     if input_md5 != output_md5:
-        print("Fail!")
+        print(r"test_case: EDSR test, duration: n/a, result: [Fail], error_info: diff w/ reference image")
     else: 
-        print("Pass!")
+        print(r"test_case: svp test, duration: n/a, result: [Pass], info: same as reference image")
 
 
 
