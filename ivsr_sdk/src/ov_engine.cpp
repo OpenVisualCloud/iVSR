@@ -25,13 +25,15 @@ IBasicVSRStatus ov_engine::init()
     }
     //read model
     std::shared_ptr<ov::Model> model;
-    std::vector<char> bin_buffer;
     try {
         model = instance_.read_model(model_path_);
     } catch (const std::exception& e) {
         // Try private method
         std::vector<char> packed_buffer;
         std::vector<char> xml_buffer;
+        // Created model object shares the weights with the weights object. Thus, do not create weights on temporary
+        // data that can be freed later, since the model constant data will point to an invalid memory.
+        static std::vector<char> bin_buffer{};
         long expiration = 0;
 
         if (irguard::system_conf_check() != irguard::OK) {
