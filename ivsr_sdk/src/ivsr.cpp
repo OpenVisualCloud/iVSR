@@ -101,6 +101,18 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
     }
 }
 
+bool check_engine_config(std::string model, std::string device) {
+    if(model == "") {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set model!");
+        return false;
+    }
+    if(device == "") {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set device!");
+        return false;
+    }
+    return true;
+} 
+
 struct ivsr{
     engine *inferEngine;
     IVSRThread::IVSRThreadExecutor *threadExecutor;
@@ -120,7 +132,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
 
     //TODO: replace w/ parseConfig() ??
     // 1.parse input config
-    std::string model = "", device = "", batch = "", infer_precision = "";
+    std::string model = "", device = "", batch = "", infer_precision = "f32";
     std::string verbose = "", custom_lib = "", cldnn_config = "";
     while(configs!=nullptr){
         IVSRStatus unsupported_status = IVSRStatus::OK;
@@ -131,6 +143,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 if(!checkFile(model)){
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
                     unsupported_output.append("INPUT_MODEL").append("=").append(configs->value);
+                    return IVSRStatus::UNSUPPORTED_CONFIG;
                 }
                 std::cout << "[INFO] " << "Model Path:" << model << std::endl;
                 break;
@@ -149,6 +162,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 if(!checkFile(custom_lib)){  // file not exists, inform out
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
                     unsupported_output.append("CUSTOM_LIB").append("=").append(configs->value);
+                    return IVSRStatus::UNSUPPORTED_CONFIG;
                 }
                 break;
             case IVSRConfigKey::CLDNN_CONFIG:
@@ -156,6 +170,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 if(!checkFile(cldnn_config)){
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
                     unsupported_output.append("CLDNN_CONFIG").append("=").append(configs->value);
+                    return IVSRStatus::UNSUPPORTED_CONFIG;
                 }
                 break;
             case IVSRConfigKey::PRECISION:
@@ -171,7 +186,6 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                         return IVSRStatus::UNSUPPORTED_CONFIG;
                     }
                 }
-                std::cout << "[INFO] " << "PRECISION:" << infer_precision << std::endl;
                 break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
@@ -182,9 +196,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
 
         configs = configs->next;
     }
-
-    if (device == "") {
-        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"for TARGET_DEVICE=");
+    if(!check_engine_config(model, device)) {
         return IVSRStatus::UNSUPPORTED_CONFIG;
     }
 

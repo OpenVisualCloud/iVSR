@@ -27,7 +27,7 @@ const std::string keys =
     "{nig               |1| Optional. Number of input data groups for inference. }"
     "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
-    "{precision         |f32| Required for inference precision.}"
+    "{precision         |f32| Required for inference precision.fp32:f32, fp16:f16, bf16:bf16}"
    ;
 
 bool checkPath(std::string path){
