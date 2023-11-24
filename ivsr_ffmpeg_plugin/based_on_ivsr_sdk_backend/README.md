@@ -57,14 +57,24 @@ sudo docker exec -it ffmpeg_ivsr_sdk bash
 source /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/install/setupvars.sh
 ldconfig
 ```
-## How to run BasicVSR inference with FFmpeg-plugin
+## How to run inference with FFmpeg-plugin
 - Use FFmpeg-plugin to run BasicVSR inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
-./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<your model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
+./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
+```
+- Use FFmpeg-plugin to run SVP inference (input must be 1920x1088)
+```
+cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
+./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=1' test_out.mp4
+```
+- Use FFmpeg-plugin to run EDSR inference
+```
+cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
+./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
 ```
 
-- Work modes of FFmpeg-plugin for BasicVSR
+- Work modes of FFmpeg-plugin
 
 Decoder and encoder work similar to FFmpeg 5.1. Options and command line formats are not changed.
 Only the options of video filter `dnn_processing` are introduced.
@@ -79,6 +89,8 @@ Only the options of video filter `dnn_processing` are introduced.
 |output|output name of the model|NULL|output|
 |backend_configs:nireq|number of inference request|2|1 or 2 or 4|
 |backend_configs:device|device for inference task|CPU|CPU or GPU|
+|backend_configs:model_type|type for models|0|0 for BasicVSR, 1 for SVP, 2 for EDSR|
+|backend_configs:normalize_factor|factor for normalization|1.0|1.0 for BasicVSR and SVP, 255.0 for EDSR|
 
 Apart from the common AVOptions which can be set in the normal FFmpeg command line with format `AVOption=value`, there are two options `nireq` and `device` to be set with the `backend_configs` option. The command format is `backend_configs='nireq=value&device=value'` when you want to set both of them.
 
