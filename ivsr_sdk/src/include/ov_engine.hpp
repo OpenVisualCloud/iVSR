@@ -56,6 +56,10 @@ public:
         return request_.get_output_tensor();
     }
 
+    ov::Tensor get_input_tensor() {
+        return request_.get_input_tensor();
+    }
+
     void set_tensor(const std::string& name, const ov::Tensor& data) {
         request_.set_tensor(name, data);
     }

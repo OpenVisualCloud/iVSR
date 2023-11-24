@@ -90,7 +90,8 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
 #ifdef ENABLE_PERF
 	request->end_time();
         auto latency = request->get_execution_time_in_milliseconds();
-        std::cout << "[PERF] " << "Inference Latency: " << latency << "ms, Throughput: " << double_to_string(3 * 1000.0 / latency) << "FPS" << std::endl;
+        size_t frame_num = (request->get_input_tensor()).get_shape()[(request->get_input_tensor().get_shape()).size()-4];
+        std::cout << "[PERF] " << "Inference Latency: " << latency << "ms, Throughput: " << double_to_string(frame_num * 1000.0 / latency) << "FPS" << std::endl;
 #endif
 
         if(ex) {

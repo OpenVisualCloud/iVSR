@@ -285,7 +285,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 #ifdef ENABLE_PERF 
         auto duration = get_duration_ms_till_now(totalStartTime);
         std::cout << "[PERF] " << "Patch inference with memory copy - Latency: " << double_to_string(duration) <<"ms"<<std::endl;
-        std::cout << "[PERF] " << "Patch inference with memory copy - Throughput: " << double_to_string(3 * 1000.0 / duration) <<"FPS"<<std::endl;
+        std::cout << "[PERF] " << "Patch inference with memory copy - Throughput: " << double_to_string(handle->patchConfig.nif* 1000.0 / duration) <<"FPS"<<std::endl;
 #endif
 // #ifdef ENABLE_PERF
 // 	// -get total duration for all tasks
