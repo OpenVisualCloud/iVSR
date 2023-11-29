@@ -1,21 +1,20 @@
 # Intel Video Super Resolution Development Kit
 
 
-Intel Video Super Resolution Development Kit (iVSR SDK) is a SDK which incorporates state-of-the-art deep learning based super resolution algorithms.
+Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK 
+which can incorporate all kinds of AI media processing algorithms.
 
 The SDK Core consists of two parts, one is the patch solution part, the other is the task scheduler part. 
 1. The patch solution part will split the frames into small patches, then the small patch will be wrapped as one inference task and put it in the task queue in the scheduler module. In addition, each small patch will have a flag to indicate which platform will be used for inference.
 1. The task scheduler part will fetch task from the task queue and send the task to the corresponding hardware according to the flag set for each small patch.
 
-The VSR SDK sample application supports to deliver super resolution algorithms on multi-HW devices, targeting to deliver a high quality and performance VSR system.
-
 <br />
 
 ## **Feature Overview**
 
-<!-- ![overview](./figs/iVSR_SDK.PNG) -->
+<!-- ![overview](./figs/iVSR_SDK.png) -->
 <div align=center>
-<img src="./figs/iVSR_SDK.PNG" width = 75% height = 75% />
+<img src="./figs/iVSR_SDK.png" width = 75% height = 75% />
 </div>
 
 <br />
@@ -23,7 +22,8 @@ The VSR SDK sample application supports to deliver super resolution algorithms o
 ## **API Introduction**
 
 
-The iVSR toolkit only provides API for C. All available interfaces are listed in the following table for [overview](#overview). Please refer to [Detailed Description](#detailed-description) for more information.
+The iVSR toolkit only provides API for C. All available interfaces are listed in the following table for [overview](#overview). 
+Please refer to [Detailed Description](#detailed-description) for more information.
 
 
 ### **Overview**
