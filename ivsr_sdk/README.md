@@ -166,7 +166,7 @@ The method deinitializes the handle and releases the resources allocated for iVS
 ##  **VSR Sample**
 
 
-There is a simple C++ sample to perform BasicVSR inference on OpenVINO backend. You can reach the sample from `/workspace/ivsr/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
+There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO backend. You can reach the sample from `/workspace/ivsr/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
 
 |Option name|Desciption|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
@@ -175,23 +175,34 @@ There is a simple C++ sample to perform BasicVSR inference on OpenVINO backend. 
 |data_path|Required. Input data path for inference.|None||
 |device|Optional. Device to perform inference.|CPU|CPU or GPU or MULTI:GPU.0,GPU.1|
 |extension|Optional. Extension (.so or .dll) path of custom operation.|None|< Path to basicvsr_sample>/lib/libcustom_extension.so|
-|model_path|Required. Path of BasicVSR OpenVINO IR model (.xml).|None||
+|model_path|Required. Path of VSR OpenVINO IR model (.xml).|None||
 |nig|Optional. Number of input groups for inference.|1||
 |save_path|Optional. Path to save predictions.|./outputs|If use the default value, make sure default path exists.|
 |save_predictions|Optional. Whether to save the results to save_path.|false|If this option exists, results will be saved.|
 |scale_factor|Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).|2|For image enhancement model and if no resolution change, please set to 1.|
+|normalize_factor|Optional. Whether to normalize input and output. |255.0|BasicVSR is normalized to 0~1.0, EDSR model does not normalized, so it need to be set to 1.0.|
+|precision |Required for inference precision setting, but runtime precision you need to check with your HW platform.|f32|f32[FP32], f16[FP16], bf16[bf16].|
 
-Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR inference on different devices:
+Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR/EDSR/SVP inference on different devices:
+
+###  **BasicVSR Sample**
 
 ```bash
-# VSR sample on CPU
-./vsr_sample --model_path=[your model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=CPU          
-# VSR sample on Single GPU
-./vsr_sample --model_path=[your model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=GPU
-# VSR sample on Multiple-GPUs
-./vsr_sample --model_path=[your model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
+# BasicVSR sample on CPU
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=CPU          
+# BasicVSR sample on Single GPU
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=GPU
+# BasicVSR sample on Multiple-GPUs
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
 ```
-
+###  **EDSR Sample**
+```bash
+./vsr_sample --model_path=[your EDSR model.xml] --data_path=[folder contains low resolution images]  --nig=1 --device=GPU  --normalize_factor=1.0 --precision=f16 #need to set normalize_factor as 1.0
+```
+### **SVP Sample**
+```bash
+./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, which must be 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
+```
 <br />
 
 ##  **Test Cases**
