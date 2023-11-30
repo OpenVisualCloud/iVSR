@@ -1,5 +1,6 @@
-# iVSR FFmpeg plugin
-The folder `ivsr_ffmpeg_plugin` enables to do BasicVSR inference using FFmpeg with OpenVINO as backend. The inference is validated with OpenVINO 2022.1 and FFmpeg 5.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline.
+# iVSR FFmpeg plugin - OpenVINO based
+The folder `ivsr_ffmpeg_plugin/based_on_ov_backend` enables BasicVSR inference using FFmpeg with OpenVINO as backend. 
+The inference is validated with OpenVINO 2022.1 and FFmpeg 5.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline.
 The folder `patches` includes our patches for FFmpeg.
 
 ## Prerequisites

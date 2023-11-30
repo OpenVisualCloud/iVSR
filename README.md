@@ -30,7 +30,7 @@ Video super resolution (VSR) is widely used in AI media enhancement domain to
 convert low-resolution video to high-resolution.
 iVSR provides two SR algorithms: Enhanced BasicVSR and Enhanced EDSR.
 
-#### -- Enhanced BasicVSR
+#### `Enhanced BasicVSR`
 BasicVSR is a public AI-based VSR algorithm. 
 For the details of public BasicVSR, please check the [paper](https://arxiv.org/pdf/2012.02181.pdf). 
 
@@ -38,14 +38,14 @@ We have enhanced the public model to achieve better visual quality and less comp
 The performance of BasicVSR inference has also been optimized for Intel GPU.
 
 
-#### -- Enhanced EDSR
+#### `Enhanced EDSR`
 EDSR is another public AI-based single image SR algorithm.
 For the details of public EDSR, please check the [paper](https://arxiv.org/pdf/1707.02921.pdf)
 
 We have enhanced the public EDSR model to reduce the computational complexity by over 79% compared to Enhanced BasicVSR, while achieving similar visual quality.
 
 ## Smart Video Processing (SVP)
-Smart Video Processing is an AI-based video prefilter that enhances the perceptual rate-distortion in video encoding. 
+`SVP` is an AI-based video prefilter that enhances the perceptual rate-distortion in video encoding. 
 With SVP, the encoded video streams achieve reduced bandwidth while maintaining the same visual quality, 
 as measured by common video quality metrics (such as VMAF and (MS-)SSIM) and human perception.
 
