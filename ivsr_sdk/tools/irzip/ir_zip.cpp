@@ -3,6 +3,8 @@
 #include <iostream>
 
 #include <irguard.hpp>
+/* Workaround private interface */
+#include <irguard_inner.hpp>
 
 void usage(int zip_flag, char** argv) {
     if (zip_flag == 0) {

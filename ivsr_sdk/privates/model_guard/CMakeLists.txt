@@ -33,7 +33,8 @@ target_include_directories(${TARGET_NAME} PUBLIC ${SDK_PRIVATE_HEADERS})
 
 target_compile_options(${TARGET_NAME} PRIVATE -Wall -Wextra -fPIC)
 
-target_link_libraries(${TARGET_NAME} z)
+find_package(OpenVINO REQUIRED COMPONENTS Runtime)
+target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime z)
 
 add_custom_command(
     TARGET ${TARGET_NAME}

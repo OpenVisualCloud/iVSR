@@ -14,6 +14,7 @@ extern "C" {
 }
 
 #include <irguard.hpp>
+#include "irguard_inner.hpp"
 
 #include "sys_conf.hpp"
 
@@ -240,4 +241,34 @@ int irguard::system_conf_check() {
 
     std::cout << "platform check failed!" << std::endl;
     return FAIL;
+}
+
+std::shared_ptr<ov::Model> irguard::load_model(const ov::Core &ins, const std::string path) {
+    // Try private method
+    std::vector<char> packed_buffer;
+    std::vector<char> xml_buffer;
+    // Created model object shares the weights with the weights object. Thus, do not create weights on temporary
+    // data that can be freed later, since the model constant data will point to an invalid memory.
+    static std::vector<char> bin_buffer{};
+    long expiration = 0;
+
+    if (irguard::system_conf_check() != irguard::OK) {
+        std::cerr << "Please contact the provider!" << std::endl;
+        exit(-1);
+    }
+
+    if (irguard::load_file_to_buffer(path, packed_buffer) != irguard::OK) {
+        std::cerr << "Failed to load " << path << "." << std::endl;
+        exit(-1);
+    }
+    expiration = irguard::unpack(packed_buffer, xml_buffer, bin_buffer);
+    auto now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    if (expiration - now < 0) {
+        std::cerr << "The model is out of date. Please contact the provider!" << std::endl;
+        exit(-1);
+    }
+
+    std::string str_model(xml_buffer.begin(), xml_buffer.end());
+    return ins.read_model(str_model, ov::Tensor(ov::element::u8, {bin_buffer.size()}, bin_buffer.data()));
 }
