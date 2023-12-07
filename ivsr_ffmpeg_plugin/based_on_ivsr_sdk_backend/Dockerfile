@@ -200,7 +200,7 @@ COPY ./ivsr_sdk $IVSR_SDK_DIR
 RUN  mkdir -p ${IVSR_SDK_DIR}/build && \
      cd ${IVSR_SDK_DIR}/build && \
      cmake .. \
-       -DENABLE_LOG=ON -DENABLE_PERF=ON -DENABLE_TEST=ON \
+       -DENABLE_LOG=ON -DENABLE_PERF=ON -DENABLE_TEST=ON -DENABLE_THREADPROCESS=ON \
        -DCMAKE_BUILD_TYPE=Release && \
      make && \
      echo "Building vsr sdk finished."
