@@ -182,6 +182,7 @@ There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO 
 |scale_factor|Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).|2|For image enhancement model and if no resolution change, please set to 1.|
 |normalize_factor|Optional. Whether to normalize input and output. |255.0|BasicVSR is normalized to 0~1.0, EDSR model does not normalized, so it need to be set to 1.0.|
 |precision |Required for inference precision setting, but runtime precision you need to check with your HW platform.|f32|f32[FP32], f16[FP16], bf16[bf16].|
+|reshape_values|Optional. Reshape the network to fit the input image size. |None|Set the complete tensor value of the shape. e.g. --reshape_values="(1,3,720,1280)" in case your input image happens to be 1280x720 RGB 24bits|
 
 Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR/EDSR/SVP inference on different devices:
 
@@ -201,7 +202,7 @@ Please note that all the paths specified by options should exist and do not end 
 ```
 ### **SVP Sample**
 ```bash
-./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, which must be 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
+./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, add reshape settings if the images are not 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
 ```
 <br />
 

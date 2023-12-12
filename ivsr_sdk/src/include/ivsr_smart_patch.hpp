@@ -25,6 +25,11 @@ struct PatchConfig{
     :patchWidth(pw),patchHeight(ph),
     block_h(b_h),block_w(b_w),scale(s),
     nif(n),dims(d){}
+
+    friend std::ostream& operator<<(std::ostream& os, const PatchConfig& cfg) {
+        return os << "PatchConfig [width]:" << cfg.patchWidth << " [height]:" << cfg.patchHeight
+                  << " [dims]:" << cfg.dims << " [scale]:" << cfg.scale << " [nif]:" << cfg.nif;
+    }
 };
 
 class SmartPatch{

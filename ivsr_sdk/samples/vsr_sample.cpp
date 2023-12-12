@@ -10,6 +10,7 @@
 #include <chrono>
 #include <ctime>
 #include <mutex>
+#include <list>
 
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds ns;
@@ -28,6 +29,7 @@ const std::string keys =
     "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
     "{precision         |f32| Required for inference precision.fp32:f32, fp16:f16, bf16:bf16}"
+    "{reshape_values    | | Optional. Reshape network to fit the input image size. e.g. --reshape_values=\"(1,3,720,1280)\"}"
    ;
 
 bool checkPath(std::string path){
@@ -53,13 +55,13 @@ int getFileNames(std::string path,std::vector<std::string>& filenames)
     return 0;
 }
 
-// input:   n images with BGR(RGB) 0-255 
+// input:   n images with BGR(RGB) 0-255
 // output:  NCHW Matrix with RGB(BGR) 0-1
 cv::Mat blobFromImages(std::vector<cv::Mat>& images, double scaleFactor,
                    bool swapRB)
 {
-    for (int i = 0; i < images.size(); i++) 
-        if(images[i].depth() == CV_8U) 
+    for (size_t i = 0; i < images.size(); i++)
+        if(images[i].depth() == CV_8U)
             images[i].convertTo(images[i], CV_32F, scaleFactor);
 
     size_t nimages = images.size();
@@ -84,7 +86,7 @@ cv::Mat blobFromImages(std::vector<cv::Mat>& images, double scaleFactor,
             std::swap(ch[0], ch[2]);
         cv::split(image, ch);
     }
-    
+
     return blob;
 }
 
@@ -116,7 +118,7 @@ void imagesFromBlob(const cv::Mat& blob_, std::vector<cv::Mat>& images_)
 }
 
 std::mutex _mutex;
-int count = 0;
+size_t count = 0;
 struct callback_args{
     int flag;
     int nif;
@@ -158,7 +160,7 @@ bool commandLineCheck(int argc, char**argv,std::string keys){
             end_pos = arg.length();
         }
         std::string commandArg = arg.substr(start_pos+2,end_pos - start_pos -2);
-        int pos = keys.find(commandArg,0);
+        auto pos = keys.find(commandArg,0);
         if(pos < 0 || pos >= keys.length()){
             std::cout<<"Error command parameter: --" << commandArg <<std::endl;
             return false;
@@ -194,7 +196,7 @@ int main(int argc, char** argv){
         parser.printMessage();
         return -1;
     }
-    // input and output path check 
+    // input and output path check
     if(!checkPath(data_path)){
         std::cout << "Invalid input directory path!" << std::endl;
         std::cout << "Directory NOT found or PATH ended with '/' " << std::endl;
@@ -209,52 +211,39 @@ int main(int argc, char** argv){
     }
 
     // 1. set ivsr config
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr, *config_precision = nullptr;
+    std::list<ivsr_config_t *> configs;
+    auto add_config = [&configs](IVSRConfigKey key, const char *value) {
+        auto new_config = new ivsr_config_t();
+        new_config->key = key;
+        new_config->value = value;
+        new_config->next = nullptr;
+        if (!configs.empty())
+            (*configs.rbegin())->next = new_config;
+        configs.emplace_back(new_config);
+    };
 
-    ivsr_config_t *config = new ivsr_config_t();
-    // - required configs
-    std::string model_path = parser.get<std::string>("model_path");
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    auto model_path = parser.get<std::string>("model_path");
+    if (!model_path.empty()) add_config(IVSRConfigKey::INPUT_MODEL, model_path.c_str());
 
-    std::string device = parser.get<std::string>("device");
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
+    auto device = parser.get<std::string>("device");
+    if (!device.empty()) add_config(IVSRConfigKey::TARGET_DEVICE, device.c_str());
 
-    // - optional configs
-    std::string precision = parser.get<std::string>("precision");
-    config_precision= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_precision->key = IVSRConfigKey::PRECISION;
-    config_precision->value = precision.c_str();
-    config_precision->next = nullptr;
-    config_device->next = config_precision;
+    auto precision = parser.get<std::string>("precision");
+    if (!precision.empty()) add_config(IVSRConfigKey::PRECISION, precision.c_str());
 
-    std::string extension = parser.get<std::string>("extension");
-    if (extension != "") {
-        config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-        config_customlib->next = nullptr;
-        config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-        config_customlib->value = extension.c_str();
-        config_precision->next = config_customlib;
-    }
-    
-    std::string cldnn_config = parser.get<std::string>("cldnn_config");
-    if (extension != "" && cldnn_config != "") {
-        config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-        config_cldnn->next = nullptr;
-        config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
-        config_cldnn->value = cldnn_config.c_str();
-        config_customlib->next = config_cldnn;
-    }
+    auto extension = parser.get<std::string>("extension");
+    if (!extension.empty()) add_config(IVSRConfigKey::CUSTOM_LIB, extension.c_str());
+
+    auto cldnn_config = parser.get<std::string>("cldnn_config");
+    if (!cldnn_config.empty()) add_config(IVSRConfigKey::CLDNN_CONFIG, cldnn_config.c_str());
+
+    auto reshape_settings = parser.get<std::string>("reshape_values");
+    if (!reshape_settings.empty()) add_config(IVSRConfigKey::RESHAPE_SETTINGS, reshape_settings.c_str());
 
     // 2. initialize ivsr
     ivsr_handle handle = nullptr;
-    auto res = ivsr_init(config, &handle);
-    if(res < 0){
+    auto res = ivsr_init(*configs.begin(), &handle);
+    if (res < 0) {
         std::cout <<"Failed to initialize ivsr engine!" <<std::endl;
         return -1;
     }
@@ -270,7 +259,7 @@ int main(int argc, char** argv){
     std::cout << "[INFO] " << "Inputs Path: " << data_path << std::endl;
     std::vector<std::string> filePathList;
     getFileNames(data_path, filePathList);
-    if(filePathList.size() < nif) {
+    if(filePathList.size() < (size_t)nif) {
         std::cout << "Not enough frames for an inference!" << std::endl;
         std::cout << "At least NIF frames in the data_path are needed!" << std::endl;
         return -1;
@@ -278,7 +267,7 @@ int main(int argc, char** argv){
     std::vector<cv::Mat> inputDataList;
     std::vector<cv::Mat> outputDataList;
     int oriHeight =0,oriWidth=0;
-    for(int idx =0; idx < filePathList.size() && idx < nig * nif; idx += nif){
+    for(size_t idx =0; idx < filePathList.size() && idx < (size_t)nig * nif; idx += nif){
         // 3.2 Read input images and preprocess with opencv
         std::vector<cv::Mat> inMatList;
         for(int i = 0; i < nif; i++){
@@ -288,8 +277,8 @@ int main(int argc, char** argv){
 #endif
             cv::Mat img = cv::imread(filePath, cv::IMREAD_COLOR);
             inMatList.push_back(img);
-        } 
-     
+        }
+
         // check images' shape
         oriHeight = inMatList[0].rows, oriWidth = inMatList[0].cols;
         /* how to check image size and model input? */
@@ -306,10 +295,10 @@ int main(int argc, char** argv){
     }
 
     std::cout << "[INFO] " << "Inference start: " << std::endl;
-    
+
     int input_size[] = { 1, nif, 3, oriHeight, oriWidth };
 
-    int id = 0;
+    size_t id = 0;
 #ifdef ENABLE_PERF
     auto totalStartTime = Time::now();
 #endif
@@ -321,7 +310,7 @@ int main(int argc, char** argv){
         callback_args cb_args(0,nif,startTime);
         cb.ivsr_cb = completion_callback;
         cb.args = (void*)(&cb_args);
-        // 4. inference  
+        // 4. inference
         auto result = ivsr_process(handle, (char *)inputImg.data, (char *)outputImg.data, input_size, &cb);
         if(result < 0){
             std::cout <<"Failed to process the inference on input data seq." << id <<std::endl;
@@ -348,7 +337,7 @@ int main(int argc, char** argv){
             return -1;
         }
         std::cout << "[INFO] " << " Saving outputs to path: " << save_path <<std::endl;
-        for (int idx = 0; idx < outputDataList.size(); idx++){
+        for (size_t idx = 0; idx < outputDataList.size(); idx++){
             // 5. post process and save outputs
             auto outputImg = outputDataList[idx];
             outputImg.convertTo(outputImg, CV_8U, normalize_factor);
@@ -365,7 +354,7 @@ int main(int argc, char** argv){
 #endif
                 cv::imwrite(filePath, outMatList[i]);
 
-            }  
+            }
         }
     }
     //release resources
@@ -374,13 +363,10 @@ int main(int argc, char** argv){
         std::cout <<"Failed to release resources!" <<std::endl;
         return -1;
     }
-    while (config != nullptr) {
-        ivsr_config_t *next = config->next;
+
+    for (auto config : configs)
         delete config;
-        config = next;
-    }
-    delete handle;
-    handle = nullptr;
-    
+    configs.clear();
+
     return 0;
 }

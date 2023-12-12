@@ -10,6 +10,9 @@
 #include "threading/ivsr_thread_executor.hpp"
 #include "utils.hpp"
 #include <mutex>
+#include <sstream>
+#include <cctype>
+#include <algorithm>
 
 std::vector<std::string> parse_devices(const std::string& device_string) {
     std::string comma_separated_devices = device_string;
@@ -113,6 +116,59 @@ bool check_engine_config(std::string model, std::string device) {
     return true;
 } 
 
+// Helper function to trim left and right whitespace from a string.
+void trim(std::string& str) {
+    auto start = str.begin();
+    while (start != str.end() && std::isspace(*start)) {
+        start++;
+    }
+
+    auto end = str.rbegin();
+    while (end.base() != start && std::isspace(*end)) {
+        end++;
+    }
+
+    str.assign(start, end.base());
+}
+
+// Converts a string containing comma-separated values into a vector of size_t.
+std::vector<size_t> convert_string_to_vector(const std::string& input) {
+    std::vector<size_t> result;
+
+    // Remove parenthesis from the input and trim whitespace.
+    size_t first = input.find_first_of('(');
+    size_t last = input.find_last_of(')');
+    std::string data =
+        (first != std::string::npos && last != std::string::npos) ? input.substr(first + 1, last - first - 1) : input;
+
+    trim(data);  // Trim the string to remove leading and trailing spaces.
+
+    std::istringstream iss(data);
+    std::string token;
+
+    while (std::getline(iss, token, ',')) {
+        trim(token);  // Trim each token before conversion.
+
+        // Check if the string is a number.
+        bool isNumber = !token.empty() && std::all_of(token.begin(), token.end(), ::isdigit);
+
+        if (isNumber) {
+            try {
+                size_t value = std::stoull(token);
+                result.push_back(value);
+            } catch (const std::out_of_range&) {
+                // Handle error if the number is too large for size_t
+                std::cerr << "Out of range: " << token << std::endl;
+            }
+        } else {
+            // Handle the error for non-numeric tokens.
+            std::cerr << "Invalid argument: " << token << std::endl;
+        }
+    }
+
+    return result;
+}
+
 struct ivsr{
     engine *inferEngine;
     IVSRThread::IVSRThreadExecutor *threadExecutor;
@@ -134,6 +190,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     // 1.parse input config
     std::string model = "", device = "", batch = "", infer_precision = "f32";
     std::string verbose = "", custom_lib = "", cldnn_config = "";
+    std::vector<size_t> reshape_settings;
     while(configs!=nullptr){
         IVSRStatus unsupported_status = IVSRStatus::OK;
         std::string unsupported_output = "";
@@ -187,6 +244,9 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                     }
                 }
                 break;
+            case IVSRConfigKey::RESHAPE_SETTINGS:
+                reshape_settings = convert_string_to_vector(configs->value);
+                break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
                 unsupported_output.append(std::to_string(configs->key));
@@ -209,7 +269,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
 
     // 3.construct and initialization
     // - initialize inference engine
-    (*handle)->inferEngine = new ov_engine(device, model, custom_lib, engine_configs);
+    (*handle)->inferEngine = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings);
 
     // -construct IVSRThreadExecutor object
     IVSRThread::Config executorConfig;
@@ -232,6 +292,9 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     (*handle)->patchConfig.patchWidth = m_input_width;
     (*handle)->patchConfig.dims = intput_dims;
     (*handle)->patchConfig.nif = nif;
+#ifdef ENABLE_LOG
+    std::cout << "[Trace]: " << (*handle)->patchConfig << std::endl;
+#endif
 
     return IVSRStatus::OK;
 }
@@ -366,10 +429,7 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
     {
         case IVSRAttrKey::IVSR_VERSION:
         {
-            /* code */
-            ivsr_version_t version;
-            version.api_version = "ivsr_release:0.5";
-            value = version.api_version;
+            value = (void *)"ivsr_release:2023/11";
             break;
         }
         case IVSRAttrKey::INPUT_TENSOR_DESC:
@@ -419,22 +479,26 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
     return IVSRStatus::OK;
 }
 
-IVSRStatus ivsr_deinit(ivsr_handle handle){
-    try{
-        if(handle->inferEngine){
+IVSRStatus ivsr_deinit(ivsr_handle handle) {
+    if (handle == nullptr) {
+        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "Invalid handle");
+        return IVSRStatus::GENERAL_ERROR;
+    }
+
+    try {
+        if (handle->inferEngine) {
             delete handle->inferEngine;
             handle->inferEngine = nullptr;
         }
-        if(handle->threadExecutor){
+        if (handle->threadExecutor) {
             delete handle->threadExecutor;
             handle->threadExecutor = nullptr;
         }
-
-    }catch(exception e){
+    } catch (exception e) {
         ivsr_status_log(IVSRStatus::EXCEPTION_ERROR, e.what());
         return IVSRStatus::UNKNOWN_ERROR;
     }
 
+    delete handle;
     return IVSRStatus::OK;
 }
-

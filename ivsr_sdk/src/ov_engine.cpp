@@ -7,6 +7,7 @@
  */
 #include <unistd.h>
 #include <cstring>
+#include <cassert>
 #include "ov_engine.hpp"
 #include "utils.hpp"
 #include "omp.h"
@@ -33,6 +34,18 @@ IBasicVSRStatus ov_engine::init()
 
     input_ = model->input();
     output_ = model->output();
+
+    if (!reshape_settings_.empty()) {
+        ov::Shape tensor_shape = input_.get_shape();
+        assert(tensor_shape.size() == reshape_settings_.size());
+
+        tensor_shape = reshape_settings_;
+#ifdef ENABLE_LOG
+        std::cout << "Reshape network to the image size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
+                  << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
+#endif
+        model->reshape({{model->input().get_any_name(), tensor_shape}});
+    }
 
     //compile model
     auto compiledModel = instance_.compile_model(model, device_);
@@ -124,39 +137,31 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
 
 
 IBasicVSRStatus ov_engine::get_attr(const std::string key, void* value) {
-    if(key == "model_inputs"){
-        ov::Shape* input_shape = (ov::Shape*) value;
+    auto extend_shape = [](ov::Shape &shape, size_t dims) {
+        if (shape.size() < dims)
+            for (size_t i = shape.size(); i < dims; i++)
+                shape.insert(shape.begin(), 1);
+    };
+
+    if (key == "model_inputs") {
+        ov::Shape* input_shape = (ov::Shape*)value;
         auto shape = input_.get_shape();
-        //@djx add for edsr
-        if(shape.size() < 5)
-            shape.insert(shape.begin(), 1);
+        extend_shape(shape, 5);
         *input_shape = shape;
-    }
-    else if(key == "model_outputs"){
-        ov::Shape* output_shape = ( ov::Shape* ) value;
-        //@djx add for edsr 
+    } else if (key == "model_outputs") {
+        ov::Shape* output_shape = (ov::Shape*)value;
         auto shape = output_.get_shape();
-        if(shape.size() < 5)
-            shape.insert(shape.begin(), 1);
+        extend_shape(shape, 5);
         *output_shape = shape;
-    }
-    else if(key == "input_dims"){
+    } else if (key == "input_dims") {
         auto input_shape = input_.get_shape();
-        //@djx add for edsr
-        if(input_shape.size() < 5)
-            input_shape.insert(input_shape.begin(), 1);
-        int* dims = (int*) value;
-        (*dims) = input_shape.size();
-    }
-    else if(key == "output_dims"){
+        size_t* dims = (size_t*)value;
+        *dims = input_shape.size() < 5 ? 5 : input_shape.size();
+    } else if (key == "output_dims") {
         auto output_shape = output_.get_shape();
-        //@djx add for edsr
-        if(output_shape.size() < 5)
-            output_shape.insert(output_shape.begin(), 1);
-        int* dims = (int*) value;
-        (*dims) = output_shape.size();
-    }
-    else{
+        size_t* dims = (size_t*)value;
+        *dims = output_shape.size() < 5 ? 5 : output_shape.size();
+    } else {
         return ERROR;
     }
     return SUCCESS;

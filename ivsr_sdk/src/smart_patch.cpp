@@ -180,7 +180,7 @@ void multithread_p_5w(float* inputBuf, float* patchBuf, std::vector<int> inputDi
     int b_thr = B;
     int n_thr = N;
     int h_thr = 1;
-    int blockSize[] = {ceil(H * 1.0 / pH), ceil(W * 1.0/ pW)};
+    int blockSize[] = {(int)ceil(H * 1.0 / pH), (int)ceil(W * 1.0/ pW)};
     int p_thr = blockSize[0] * blockSize[1];
 
     int innerH_iter_ = pH / h_thr;
@@ -234,7 +234,7 @@ IBasicVSRStatus SmartPatch::generatePatch(){
     int inputHeight = *(_inputShape.end() - 2);
     int inputWidth = *(_inputShape.end() - 1);
     int patchSize[] = {_config.patchHeight, _config.patchWidth};
-    int blockSize[] = {ceil((inputHeight) * 1.0 / _config.patchHeight), ceil(inputWidth * 1.0 / _config.patchWidth)};
+    int blockSize[] = {(int)ceil((inputHeight) * 1.0 / _config.patchHeight), (int)ceil(inputWidth * 1.0 / _config.patchWidth)};
     _config.block_h = blockSize[0], _config.block_w = blockSize[1]; 
     std::vector<int> inputDims = _inputShape; //{1,3,3,1080,1920} // from where?
     

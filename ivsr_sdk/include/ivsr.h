@@ -30,7 +30,7 @@ typedef struct ivsr_callback {
  * 
  */
 typedef struct ivsr_version {
-    char *api_version; //!< A string representing ibasicvsr sdk version>
+    const char *api_version; //!< A string representing ibasicvsr sdk version>
 } ivsr_version_t;
 
 /**
@@ -58,7 +58,8 @@ typedef enum {
     CUSTOM_LIB    = 0x5,
     CLDNN_CONFIG  = 0x6,
     NUM_IFER_REQUEST = 0x7,
-    PRECISION = 0x8
+    PRECISION = 0x8,
+    RESHAPE_SETTINGS = 0x9,
 }IVSRConfigKey;
 
 typedef enum {

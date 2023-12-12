@@ -81,11 +81,18 @@ private:
 
 class ov_engine : public engine {
 public:
-    ov_engine(std::string device, std::string model_path, std::string custom_lib,
-    std::map<std::string, ov::AnyMap> configs)
-    : engine(device), model_path_(model_path),
-    custom_lib_(custom_lib),
-    configs_(configs) { init(); }
+    ov_engine(std::string device,
+              std::string model_path,
+              std::string custom_lib,
+              std::map<std::string, ov::AnyMap> configs,
+              const std::vector<size_t>& reshape_settings)
+        : engine(device),
+          model_path_(model_path),
+          custom_lib_(custom_lib),
+          configs_(configs),
+          reshape_settings_(reshape_settings) {
+        init();
+    }
 
     IBasicVSRStatus init();
 
@@ -139,6 +146,7 @@ private:
     //configurations for openvino instances.
     std::map<std::string, ov::AnyMap> configs_;
     ov::Core instance_;
+    std::vector<size_t> reshape_settings_;
 
     std::string custom_lib_;
     std::string model_path_;
