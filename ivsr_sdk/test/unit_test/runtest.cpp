@@ -67,7 +67,6 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_CPU_withCustom)
     EXPECT_EQ(0, res) << "ValidInputTestForInit_CPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(0, res) << "ValidInputTestForInit_CPU_withCustom test failed-deinit";
-    delete handle;
     handle = nullptr;
 }
 
@@ -106,7 +105,6 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_GPU_withCustom)
     EXPECT_EQ(0, res) << "ValidInputTestForInit_GPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(0, res) << "ValidInputTestForInit_GPU_withCustom test failed-deinit";
-    delete handle;
     handle = nullptr;
 }
 
@@ -145,7 +143,6 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_MultiGPU_withCustom)
     EXPECT_EQ(0, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(0, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-deinit";
-    delete handle;
     handle = nullptr;
 }
 
@@ -210,7 +207,6 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    delete handle;
     handle = nullptr;
 
 }
@@ -282,7 +278,6 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    delete handle;
     handle = nullptr;
 }
 
@@ -353,7 +348,6 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    delete handle;
     handle = nullptr;
 }
 
