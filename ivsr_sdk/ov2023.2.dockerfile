@@ -93,24 +93,41 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
   make install && \
   cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
-ARG ICD_VER
-ARG LEVEL_ZERO_GPU_VER
-ARG LEVEL_ZERO_VER
-ARG LEVEL_ZERO_DEV_VER
-COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
+#ARG ICD_VER
+#ARG LEVEL_ZERO_GPU_VER
+#ARG LEVEL_ZERO_VER
+#ARG LEVEL_ZERO_DEV_VER
+#COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
+#RUN apt-get update && \
+#    xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt && \
+#    apt-get install -y vainfo clinfo && \
+#    apt-get clean && \
+#    rm -rf  /var/lib/apt/lists/* && \
+#    rm ${WORKSPACE}/dgpu_umd_stable_555_0124.txt
+
+# for GPU
 RUN apt-get update && \
-    xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt && \
     apt-get install -y vainfo clinfo && \
-    apt-get clean && \
-    rm -rf  /var/lib/apt/lists/* && \
-    rm ${WORKSPACE}/dgpu_umd_stable_555_0124.txt
+    apt-get install -y --no-install-recommends ocl-icd-libopencl1 && \
+    apt-get clean ; \
+    rm -rf /var/lib/apt/lists/* && rm -rf /tmp/*
+# hadolint ignore=DL3003
+RUN mkdir /tmp/gpu_deps && cd /tmp/gpu_deps && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/23.05.25593.11/libigdgmm12_22.3.0_amd64.deb && \
+    curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.13700.14/intel-igc-core_1.0.13700.14_amd64.deb && \
+    curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.13700.14/intel-igc-opencl_1.0.13700.14_amd64.deb && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/23.13.26032.30/intel-opencl-icd_23.13.26032.30_amd64.deb && \
+    curl -L -O https://github.com/intel/compute-runtime/releases/download/23.13.26032.30/libigdgmm12_22.3.0_amd64.deb && \
+    dpkg -i ./*.deb && rm -Rf /tmp/gpu_deps
 
 ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_LIBRARY_PATH
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
+
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_OV3_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/install
-ARG IVSR_SDK_DIR=${IVSR_DIR}/ivsr_sdk/
+ARG IVSR_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2023.2
+
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_GPU_OPT_DIR}/openvino/install
+ARG IVSR_SDK_DIR=${IVSR_DIR}/ivsr_sdk
 
 RUN apt-get update && \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -152,17 +169,22 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python3
 
-COPY ./ivsr_gpu_opt/based_on_openvino_2022.3/openvino $IVSR_OV3_GPU_OPT_DIR
+ARG OPENVINO_BRANCH="releases/2023/2"
+
+WORKDIR ${IVSR_GPU_OPT_DIR}
+RUN git clone https://github.com/openvinotoolkit/openvino.git --depth 1 -b ${OPENVINO_BRANCH}
+
 RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name" && \
-  cd ${IVSR_OV3_GPU_OPT_DIR} && \
+  cd openvino && \
+  git submodule update --init --recursive && \
   mkdir build && cd build && \
   cmake \
     -DCMAKE_INSTALL_PREFIX=${PWD}/../install \
     -DENABLE_INTEL_CPU=ON \
     -DENABLE_CLDNN=ON \
     -DENABLE_INTEL_GPU=ON \
-    -DENABLE_ONEDNN_FOR_GPU=OFF \
+    -DENABLE_ONEDNN_FOR_GPU=ON \
     -DENABLE_INTEL_GNA=OFF \
     -DENABLE_INTEL_MYRIAD_COMMON=OFF \
     -DENABLE_INTEL_MYRIAD=OFF \
@@ -182,7 +204,7 @@ RUN git config --global user.email "noname@example.com" && \
     -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-  make -j 8 && \
+  make -j "$(nproc)" && \
   make install && \
   bash ${PWD}/../install/setupvars.sh
 
@@ -196,11 +218,13 @@ ENV TBB_DIR=${CUSTOM_IE_DIR}/3rdparty/tbb/cmake
 ENV ngraph_DIR=${CUSTOM_IE_DIR}/cmake
 ENV LD_LIBRARY_PATH=${CUSTOM_IE_DIR}/3rdparty/tbb/lib:${CUSTOM_IE_LIBDIR}:$LD_LIBRARY_PATH
 
+WORKDIR ${IVSR_DIR}
 COPY ./ivsr_sdk $IVSR_SDK_DIR
 RUN  mkdir -p ${IVSR_SDK_DIR}/build && \
      cd ${IVSR_SDK_DIR}/build && \
      cmake .. \
        -DENABLE_LOG=ON -DENABLE_PERF=ON -DENABLE_TEST=ON \
+       -DREBUILD_IRGUARD=ON \
        -DCMAKE_BUILD_TYPE=Release && \
      make && \
      echo "Building vsr sdk finished."

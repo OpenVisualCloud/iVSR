@@ -92,8 +92,7 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
             }
         }
         else if(d.find("GPU") != std::string::npos){ // GPU
-            auto stream_key = ov::num_streams.name();
-            device_config[stream_key] = nstream;
+            device_config.emplace(ov::num_streams(nstream));
             device_config.emplace(ov::hint::inference_precision(infer_precision));
         }
         else{ // CPU 
