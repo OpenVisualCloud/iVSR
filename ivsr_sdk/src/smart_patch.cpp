@@ -241,7 +241,7 @@ IBasicVSRStatus SmartPatch::generatePatch(){
 
 #ifdef ENABLE_THREADPROCESS
     multithread_p_5w((float*)_inputPtr, _patchInputPtr, inputDims, patchSize, true);
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < _config.block_h * _config.block_w; i++) {
         _patchInputPtrList.push_back((char*)(_patchInputPtr + i * (inputDims[0] * inputDims[1] * inputDims[2] * patchSize[0] * patchSize[1])));
     }
 #else
@@ -263,7 +263,7 @@ IBasicVSRStatus SmartPatch::generatePatch(){
     *(outputDims.end() - 2) = inferOutHeight, *(outputDims.end() - 1) = inferOutWidth; // {1,3,3,2160,3840}
 
 #ifdef ENABLE_THREADPROCESS
-    for(int i = 0; i < 4; i++) {
+    for(int i = 0; i < _config.block_h * _config.block_w; i++) {
         _patchOutputPtrList.push_back((char*)(outPatchBuf + i * (outputDims[0] * outputDims[1] * outputDims[2] * outPatchSize[0] * outPatchSize[1])));
     }
 #else
