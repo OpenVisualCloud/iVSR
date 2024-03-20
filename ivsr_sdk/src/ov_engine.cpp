@@ -36,15 +36,23 @@ IBasicVSRStatus ov_engine::init()
     output_ = model->output();
 
     if (!reshape_settings_.empty()) {
-        ov::Shape tensor_shape = input_.get_shape();
+        ov::PartialShape tensor_shape = input_.get_partial_shape();
         assert(tensor_shape.size() == reshape_settings_.size());
-
-        tensor_shape = reshape_settings_;
-#ifdef ENABLE_LOG
-        std::cout << "Reshape network to the image size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
-                  << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
-#endif
-        model->reshape({{model->input().get_any_name(), tensor_shape}});
+        ov::Dimension frame_w = reshape_settings_[reshape_settings_.size() - 1];
+        ov::Dimension frame_h = reshape_settings_[reshape_settings_.size() - 2];
+        ov::Dimension model_w = tensor_shape[tensor_shape.size()-1];
+        ov::Dimension model_h = tensor_shape[tensor_shape.size()-2];
+        if(frame_w!=model_w || frame_h!=model_h){
+            tensor_shape = (ov::PartialShape)reshape_settings_;
+    #ifdef ENABLE_LOG
+            std::cout << "Model shape different with frame,reshape network to the frame size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
+                    << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
+    #endif
+            model->reshape({{model->input().get_any_name(), tensor_shape}});
+    #ifdef ENABLE_LOG
+            std::cout<<"model reshape success!"<<std::endl;
+    #endif
+        }
     }
 
     //compile model
