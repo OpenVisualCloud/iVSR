@@ -32,27 +32,68 @@ IBasicVSRStatus ov_engine::init()
         model = irguard::load_model(instance_, model_path_);
     }
 
-    input_ = model->input();
-    output_ = model->output();
+    input_ = model->inputs()[0];
+    output_ = model->outputs()[0];
+
+    bool multiple_inputs = false;
+    if (model->inputs().size() == 5 && model->outputs().size() == 5)
+        multiple_inputs = true;
 
     if (!reshape_settings_.empty()) {
-        ov::PartialShape tensor_shape = input_.get_partial_shape();
-        assert(tensor_shape.size() == reshape_settings_.size());
-        ov::Dimension frame_w = reshape_settings_[reshape_settings_.size() - 1];
-        ov::Dimension frame_h = reshape_settings_[reshape_settings_.size() - 2];
-        ov::Dimension model_w = tensor_shape[tensor_shape.size()-1];
-        ov::Dimension model_h = tensor_shape[tensor_shape.size()-2];
-        if(frame_w!=model_w || frame_h!=model_h){
-            tensor_shape = (ov::PartialShape)reshape_settings_;
-    #ifdef ENABLE_LOG
-            std::cout << "Model shape different with frame,reshape network to the frame size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
-                    << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
-    #endif
-            model->reshape({{model->input().get_any_name(), tensor_shape}});
-    #ifdef ENABLE_LOG
-            std::cout<<"model reshape success!"<<std::endl;
-    #endif
+        // get_shape() only can be called by static shape, openvino will check the shape size during reshape operation
+        //ov::Shape tensor_shape = input_.get_shape();
+        //assert(tensor_shape.size() == reshape_settings_.size());
+
+        ov::Shape tensor_shape = reshape_settings_;
+
+        size_t bactch_index, channels_index, h_index, w_index;
+        if (multiple_inputs) {
+            const ov::Layout model_layout{"NCHW"};
+            bactch_index = ov::layout::batch_idx(model_layout);
+            channels_index = ov::layout::channels_idx(model_layout);
+            h_index = ov::layout::height_idx(model_layout);
+            w_index = ov::layout::width_idx(model_layout);
+
+            assert(tensor_shape[h_index] % 4 == 0);
+            assert(tensor_shape[w_index] % 4 == 0);
         }
+
+#ifdef ENABLE_LOG
+        std::cout << "Reshape network to the image size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
+                  << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
+#endif
+        model->reshape({{model->inputs()[0].get_any_name(), tensor_shape}});
+
+        if (multiple_inputs) {
+            ov::Shape hidden_tensor_shape = reshape_settings_;
+            hidden_tensor_shape[bactch_index] = tensor_shape[bactch_index];
+            hidden_tensor_shape[channels_index] = 64;
+            hidden_tensor_shape[h_index] = tensor_shape[h_index] / 4;
+            hidden_tensor_shape[w_index] = tensor_shape[w_index] / 4;
+
+            for (int i = 1; i < model->inputs().size(); ++i)
+                model->reshape({{model->inputs()[i].get_any_name(), hidden_tensor_shape}});
+        }
+    }
+
+    // build stateful model
+    if (multiple_inputs) {
+        // Time::time_point start_time = Time::now();
+        std::map<std::string, std::string> tensor_names;
+        const auto& inputs = model->inputs();
+        const auto& outputs = model->outputs();
+        for (int i = 1; i < inputs.size(); ++i) {
+            std::string hidden_inp_name = inputs[i].get_any_name();
+            std::string hidden_out_name = outputs[i].get_any_name();
+            tensor_names[hidden_inp_name] = hidden_out_name;
+        }
+
+        ov::pass::Manager manager;
+        manager.register_pass<ov::pass::MakeStateful>(tensor_names);
+        manager.run_passes(model);
+        // Time::time_point end_time = Time::now();
+        // auto execTime = std::chrono::duration_cast<ns>(end_time - start_time);
+        // std::cout << "The exec time of making stateful model is " << execTime.count() * 0.000001 << "ms\n";
     }
 
     //compile model

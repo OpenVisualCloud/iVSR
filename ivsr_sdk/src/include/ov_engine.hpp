@@ -13,6 +13,9 @@
 #include <queue>
 #include "engine.hpp"
 #include "openvino/openvino.hpp"
+#include "openvino/pass/manager.hpp"
+#include "openvino/pass/make_stateful.hpp"
+#include "openvino/core/layout.hpp"
 
 typedef std::function<void(size_t id)>
     CallbackFunction;
