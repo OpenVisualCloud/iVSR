@@ -72,10 +72,6 @@ inline void ivsr_status_log(IVSRStatus status, const char* log) {
     case IVSRStatus::EXCEPTION_ERROR:
         std::cout << "[Exceptoin] Exception occurred " << log << "." << std::endl;
         break;
-    case IVSRStatus::UNSUPPORTED_SHAPE:
-        std::cout << "[Error] Unsupported input shape " << log << ", please check the input frame's size." << std::endl;
-        break;
-
     default:
         break;
     }

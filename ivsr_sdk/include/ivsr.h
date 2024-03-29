@@ -43,8 +43,7 @@ typedef enum {
     UNKNOWN_ERROR   = -2,
     UNSUPPORTED_KEY = -3,
     UNSUPPORTED_CONFIG = -4,
-    EXCEPTION_ERROR    = -5,
-    UNSUPPORTED_SHAPE  = -6;
+    EXCEPTION_ERROR    = -5
 }IVSRStatus;
 
 /**
