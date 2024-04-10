@@ -280,8 +280,8 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine);
     
     // -construct patch config
-    int intput_dims = 0;
-    (*handle)->inferEngine->get_attr("input_dims", &intput_dims); 
+    size_t input_dims = 0;
+    (*handle)->inferEngine->get_attr("input_dims", &input_dims);
     ov::Shape model_inputs, model_outputs;
     (*handle)->inferEngine->get_attr("model_inputs",&model_inputs); // 1,3,3,1080,1920 (400,700)
     (*handle)->inferEngine->get_attr("model_outputs",&model_outputs); // 1,3,3,2160,3840 (800,1400)
@@ -294,7 +294,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     (*handle)->patchConfig.scale = m_output_width / m_input_width; // Note: do not support fractional SR 
     (*handle)->patchConfig.patchHeight = m_input_height;
     (*handle)->patchConfig.patchWidth = m_input_width;
-    (*handle)->patchConfig.dims = intput_dims;
+    (*handle)->patchConfig.dims = input_dims;
     (*handle)->patchConfig.nif = nif;
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << (*handle)->patchConfig << std::endl;
