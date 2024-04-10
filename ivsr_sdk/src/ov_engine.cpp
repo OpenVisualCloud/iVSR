@@ -46,10 +46,10 @@ IBasicVSRStatus ov_engine::init()
 
         ov::Shape tensor_shape = reshape_settings_;
 
-        size_t bactch_index, channels_index, h_index, w_index;
+        size_t batch_index, channels_index, h_index, w_index;
         if (multiple_inputs) {
             const ov::Layout model_layout{"NCHW"};
-            bactch_index = ov::layout::batch_idx(model_layout);
+            batch_index = ov::layout::batch_idx(model_layout);
             channels_index = ov::layout::channels_idx(model_layout);
             h_index = ov::layout::height_idx(model_layout);
             w_index = ov::layout::width_idx(model_layout);
@@ -68,7 +68,7 @@ IBasicVSRStatus ov_engine::init()
 
         if (multiple_inputs) {
             ov::Shape hidden_tensor_shape = reshape_settings_;
-            hidden_tensor_shape[bactch_index] = tensor_shape[bactch_index];
+            hidden_tensor_shape[batch_index] = tensor_shape[batch_index];
             hidden_tensor_shape[channels_index] = 64;
             hidden_tensor_shape[h_index] = tensor_shape[h_index] / 4;
             hidden_tensor_shape[w_index] = tensor_shape[w_index] / 4;
