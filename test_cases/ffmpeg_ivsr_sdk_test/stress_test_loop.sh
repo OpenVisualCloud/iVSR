@@ -65,7 +65,7 @@ stress_loop_test()
     fi
 
     command="./ffmpeg -i ${TEST_VIDEO_NAME} -y 
-            -vf dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' test_out.mp4" 
+            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' test_out.mp4"
     end_time=`date +%s`
     
     start_time=`date +%s`

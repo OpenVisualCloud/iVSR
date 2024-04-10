@@ -39,7 +39,7 @@ function_test()
     fi
 
     command="./ffmpeg -i ${TEST_VIDEO_NAME} -y 
-            -vf dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' output_fn30_${device}_${model_type}.mp4" 
+            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' output_fn30_${device}_${model_type}.mp4"
     
     start_time=`date +%s`
     ${command} > ${log_dir}/function_test_${device}_${model_type}.log

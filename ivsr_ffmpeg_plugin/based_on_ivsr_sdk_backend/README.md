@@ -62,17 +62,17 @@ ldconfig
 - Use FFmpeg-plugin to run BasicVSR inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
-./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
 ```
 - Use FFmpeg-plugin to run SVP inference (input must be 1920x1088)
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
-./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=1' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=1' test_out.mp4
 ```
 - Use FFmpeg-plugin to run EDSR inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
-./ffmpeg -i <your test video> -vf dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
 ```
 
 - Work modes of FFmpeg-plugin
