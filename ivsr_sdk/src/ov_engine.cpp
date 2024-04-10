@@ -143,21 +143,7 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
             }
         }
         auto cbTask = task;
-        auto output_tensor = request->get_output_tensor();
-        auto size = output_tensor.get_byte_size();
 
-        //TODO: better way to do it to reduce memory copy.
-        //reinvestigae openvino API for buffer sharing or expose the output buffer pointer to application
-        //std::memcpy(cbTask->outputPtr_, (char*)output_tensor.data(), size);
-        omp_set_num_threads(12);
-        #pragma omp parallel for 
-        for(int i = 0; i < 12; i++) {
-            std::memcpy(cbTask->outputPtr_ + i * size / 12, (char*)output_tensor.data() + i * size / 12,  size / 12);
-        }
-
-#ifdef ENABLE_LOG
-        std::cout << "[Trace]: " << "infer request callback: Memory Copy Finsihed!" << std::endl;
-#endif
         request->call_back();
         //call application callback function 
 	cbTask->_callbackQueue();     
@@ -171,12 +157,8 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
     ov::Tensor input_tensor(input_.get_element_type(), input_.get_shape(), task->inputPtr_);
     inferReq->set_input_tensor(input_tensor);
 
-    /**
-     * output tensor can not set by this way.
-    */
-    //construct the output tensor
-    //ov::Tensor output_tensor(output_.get_element_type(), output_.get_shape(), task->outputPtr_);
-    //inferReq->set_output_tensor(output_tensor);
+    ov::Tensor output_tensor(output_.get_element_type(), output_.get_shape(), task->outputPtr_);
+    inferReq->set_output_tensor(output_tensor);
     inferReq->start_async();
     
 #ifdef ENABLE_LOG
