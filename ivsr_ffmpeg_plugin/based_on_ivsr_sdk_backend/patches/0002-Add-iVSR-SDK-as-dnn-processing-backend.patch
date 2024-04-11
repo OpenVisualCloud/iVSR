@@ -928,9 +928,9 @@ index 13327eab15..c08807920a 100644
 +        av_freep(&handle);
 +    }
      return;
--}
-\ No newline at end of file
-+}
+ }
+ 
+ const DNNModule ff_dnn_backend_ivsr = {
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.h b/libavfilter/dnn/dnn_backend_ivsr.h
 index 3ace47b7ac..8c57d29c32 100644
 --- a/libavfilter/dnn/dnn_backend_ivsr.h
@@ -988,9 +988,9 @@ index 5083e3de19..043f7fd075 100644
      };
      return (ctx->dnn_module->execute_model)(ctx->model, &exec_params);
  }
-@@ -160,4 +171,12 @@ void ff_dnn_uninit(DnnContext *ctx)
+@@ -159,6 +171,14 @@ void ff_dnn_uninit(DnnContext *ctx)
+     if (ctx->dnn_module) {
          (ctx->dnn_module->free_model)(&ctx->model);
-         av_freep(&ctx->dnn_module);
      }
 +
 +    if (ctx->in_queue) {
@@ -1000,14 +1000,16 @@ index 5083e3de19..043f7fd075 100644
 +    if (ctx->out_queue) {
 +        av_fifo_freep2(&ctx->out_queue);
 +    }
- }
+     if (ctx->model_outputnames) {
+         for (int i = 0; i < ctx->nb_outputs; i++)
+             av_free(ctx->model_outputnames[i]);
 diff --git a/libavfilter/dnn_filter_common.h b/libavfilter/dnn_filter_common.h
 index bcdf37c815..e5d89fee7d 100644
 --- a/libavfilter/dnn_filter_common.h
 +++ b/libavfilter/dnn_filter_common.h
 @@ -38,6 +38,13 @@ typedef struct DnnContext {
      uint32_t nb_outputs;
-     DNNModule *dnn_module;
+     const DNNModule *dnn_module;
      DNNModel *model;
 +    AVFifo *in_queue;
 +    AVFifo *out_queue;
@@ -1044,21 +1046,21 @@ diff --git a/libavfilter/vf_dnn_processing.c b/libavfilter/vf_dnn_processing.c
 index cac096a19f..f33d281fe1 100644
 --- a/libavfilter/vf_dnn_processing.c
 +++ b/libavfilter/vf_dnn_processing.c
-@@ -28,6 +28,7 @@
+@@ -27,6 +27,7 @@
  #include "libavutil/pixdesc.h"
  #include "libavutil/avassert.h"
  #include "libavutil/imgutils.h"
 +#include "libavutil/fifo.h"
  #include "filters.h"
  #include "dnn_filter_common.h"
- #include "formats.h"
-@@ -52,26 +53,47 @@ static const AVOption dnn_processing_options[] = {
+ #include "internal.h"
+@@ -50,26 +51,47 @@ static const AVOption dnn_processing_options[] = {
  #endif
  #if (CONFIG_LIBOPENVINO == 1)
-     { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = 2 },    0, 0, FLAGS, "backend" },
+     { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, "backend" },
 +#endif
 +#if (CONFIG_LIBIVSR == 1)
-+    { "ivsr",        "ivsr flag",                  0,                        AV_OPT_TYPE_CONST,     { .i64 = 3 },    0, 0, FLAGS, "backend" },
++    { "ivsr",        "ivsr flag",                  0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_IVSR },    0, 0, FLAGS, "backend" },
  #endif
      DNN_COMMON_OPTIONS
 +    { "nif",         "number of input frames, NOT usable for BasicVSR model",     OFFSET(nif),              AV_OPT_TYPE_INT,       { .i64 = 3 },    1,      INT_MAX, FLAGS },
@@ -1231,7 +1233,7 @@ index cac096a19f..f33d281fe1 100644
          ret = ff_inlink_consume_frame(inlink, &in);
          if (ret < 0)
              return ret;
-@@ -296,27 +385,27 @@ static int activate(AVFilterContext *filter_ctx)
+@@ -295,27 +384,27 @@ static int activate(AVFilterContext *filter_ctx)
                  return AVERROR(ENOMEM);
              }
              av_frame_copy_props(out, in);

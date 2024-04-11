@@ -35,7 +35,7 @@ index ba5793b2ff..a541dc1ef7 100755
      libopus
      libplacebo
      libpulse
-@@ -2720,7 +2723,7 @@ dct_select="rdft"
+@@ -2760,7 +2763,7 @@ dct_select="rdft"
  deflate_wrapper_deps="zlib"
  dirac_parse_select="golomb"
  dovi_rpu_select="golomb"
@@ -43,11 +43,11 @@ index ba5793b2ff..a541dc1ef7 100755
 +dnn_suggest="libtensorflow libopenvino libivsr"
  dnn_deps="avformat swscale"
  error_resilience_select="me_cmp"
- faandct_deps="faan"
-@@ -6600,6 +6603,7 @@ enabled libopenjpeg       && { check_pkg_config libopenjpeg "libopenjp2 >= 2.1.0
-                                { require_pkg_config libopenjpeg "libopenjp2 >= 2.1.0" openjpeg.h opj_version -DOPJ_STATIC && add_cppflags -DOPJ_STATIC; } }
- enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.6557" libopenmpt/libopenmpt.h openmpt_module_create -lstdc++ && append libopenmpt_extralibs "-lstdc++"
- enabled libopenvino       && require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api
+ evcparse_select="golomb"
+@@ -6772,6 +6775,7 @@ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.6557
+ enabled libopenvino       && { { check_pkg_config libopenvino openvino openvino/c/openvino.h ov_core_create && enable openvino2; } ||
+                                 { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
+                                   require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; } }
 +enabled libivsr           && require libivsr ivsr.h ivsr_init -livsr
  enabled libopus           && {
      enabled libopus_decoder && {
@@ -68,7 +68,7 @@ new file mode 100644
 index 0000000000..13327eab15
 --- /dev/null
 +++ b/libavfilter/dnn/dnn_backend_ivsr.c
-@@ -0,0 +1,31 @@
+@@ -0,0 +1,39 @@
 +/**
 + * @file
 + * DNN iVSR SDK backend implementation.
@@ -100,6 +100,14 @@ index 0000000000..13327eab15
 +{
 +    return;
 +}
++
++const DNNModule ff_dnn_backend_ivsr = {
++    .load_model     = ff_dnn_load_model_ivsr,
++    .execute_model  = ff_dnn_execute_model_ivsr,
++    .get_result     = ff_dnn_get_result_ivsr,
++    .flush          = ff_dnn_flush_ivsr,
++    .free_model     = ff_dnn_free_model_ivsr,
++};
 \ No newline at end of file
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.h b/libavfilter/dnn/dnn_backend_ivsr.h
 new file mode 100644
@@ -131,33 +139,25 @@ diff --git a/libavfilter/dnn/dnn_interface.c b/libavfilter/dnn/dnn_interface.c
 index 554a36b0dc..3763f898af 100644
 --- a/libavfilter/dnn/dnn_interface.c
 +++ b/libavfilter/dnn/dnn_interface.c
-@@ -27,6 +27,7 @@
- #include "dnn_backend_native.h"
- #include "dnn_backend_tf.h"
- #include "dnn_backend_openvino.h"
-+#include "dnn_backend_ivsr.h"
- #include "libavutil/mem.h"
+@@ -28,6 +28,7 @@
  
- DNNModule *ff_get_dnn_module(DNNBackendType backend_type)
-@@ -70,6 +71,18 @@ DNNModule *ff_get_dnn_module(DNNBackendType backend_type)
-         return NULL;
+ extern const DNNModule ff_dnn_backend_openvino;
+ extern const DNNModule ff_dnn_backend_tf;
++extern const DNNModule ff_dnn_backend_ivsr;
+ 
+ const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
+ {
+@@ -40,6 +41,10 @@ const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
+     case DNN_OV:
+         return &ff_dnn_backend_openvino;
      #endif
-         break;
-+    case DNN_IVSR:
 +    #if (CONFIG_LIBIVSR == 1)
-+        dnn_module->load_model = &ff_dnn_load_model_ivsr;
-+        dnn_module->execute_model = &ff_dnn_execute_model_ivsr;
-+        dnn_module->get_result = &ff_dnn_get_result_ivsr;
-+        dnn_module->flush = &ff_dnn_flush_ivsr;
-+        dnn_module->free_model = &ff_dnn_free_model_ivsr;
-+    #else
-+        av_freep(&dnn_module);
-+        return NULL;
++    case DNN_IVSR:
++        return &ff_dnn_backend_ivsr;
 +    #endif
-+        break;
      default:
-         av_log(NULL, AV_LOG_ERROR, "Module backend_type is not native or tensorflow\n");
-         av_freep(&dnn_module);
+         av_log(log_ctx, AV_LOG_ERROR,
+                 "Module backend_type %d is not supported or enabled.\n",
 diff --git a/libavfilter/dnn_interface.h b/libavfilter/dnn_interface.h
 index ef8d7ae66f..0e96562da2 100644
 --- a/libavfilter/dnn_interface.h
@@ -166,8 +166,8 @@ index ef8d7ae66f..0e96562da2 100644
  
  #define DNN_GENERIC_ERROR FFERRTAG('D','N','N','!')
  
--typedef enum {DNN_NATIVE, DNN_TF, DNN_OV} DNNBackendType;
-+typedef enum {DNN_NATIVE, DNN_TF, DNN_OV, DNN_IVSR} DNNBackendType;
+-typedef enum {DNN_TF = 1, DNN_OV} DNNBackendType;
++typedef enum {DNN_TF = 1, DNN_OV, DNN_IVSR} DNNBackendType;
  
  typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
  

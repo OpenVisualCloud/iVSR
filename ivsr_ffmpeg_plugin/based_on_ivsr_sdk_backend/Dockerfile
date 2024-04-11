@@ -227,7 +227,7 @@ RUN apt-get update && \
     && \
   rm -rf /var/lib/apt/lists/*
 ENV LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:$LD_LIBRARY_PATH
-
+ENV LD_LIBRARY_PATH=/usr/local/lib/:$LD_LIBRARY_PATH
 COPY ./ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend ${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend
 ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend
 ARG FFMPEG_DIR=${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
