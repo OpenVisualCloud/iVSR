@@ -41,7 +41,7 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
                 config["GPU"] = {};
         config["GPU"]["CONFIG_FILE"] = cldnn_config;
     }
-    
+
     auto devices = parse_devices(device);
     std::set<std::string> default_devices;
     for (auto& d : devices) {
@@ -95,7 +95,7 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
             device_config.emplace(ov::num_streams(nstream));
             device_config.emplace(ov::hint::inference_precision(infer_precision));
         }
-        else{ // CPU 
+        else{ // CPU
             // insert inference precision to map device_config
             device_config.emplace(ov::hint::inference_precision(infer_precision));
         }
@@ -113,7 +113,7 @@ bool check_engine_config(std::string model, std::string device) {
         return false;
     }
     return true;
-} 
+}
 
 // Helper function to trim left and right whitespace from a string.
 void trim(std::string& str) {
@@ -169,12 +169,12 @@ std::vector<size_t> convert_string_to_vector(const std::string& input) {
 }
 
 struct ivsr{
-    engine *inferEngine;
+    engine<ov_engine> inferEngine;
     IVSRThread::IVSRThreadExecutor *threadExecutor;
     std::unordered_map<std::string,const char*> vsr_config;
     PatchConfig patchConfig;
     bool patchSolution;
-    ivsr():inferEngine(nullptr),threadExecutor(nullptr),patchSolution(false){}
+    ivsr():threadExecutor(nullptr),patchSolution(false){}
 };
 
 IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
@@ -268,30 +268,30 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
 
     // 3.construct and initialization
     // - initialize inference engine
-    (*handle)->inferEngine = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings);
+    (*handle)->inferEngine = {new ov_engine(device, model, custom_lib, engine_configs, reshape_settings)};
     IBasicVSRStatus status;
-    status = (*handle)->inferEngine->init();
+    status = (*handle)->inferEngine.init();
     if(status != IBasicVSRStatus::SUCCESS){
         ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, "in ivsr_init");
         return IVSRStatus::UNSUPPORTED_SHAPE;
     }
     // -construct IVSRThreadExecutor object
     IVSRThread::Config executorConfig;
-    (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine);
-    
+    (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine.get_impl());
+
     // -construct patch config
     size_t input_dims = 0;
-    (*handle)->inferEngine->get_attr("input_dims", &input_dims);
+    (*handle)->inferEngine.get_attr("input_dims", input_dims);
     ov::Shape model_inputs, model_outputs;
-    (*handle)->inferEngine->get_attr("model_inputs",&model_inputs); // 1,3,3,1080,1920 (400,700)
-    (*handle)->inferEngine->get_attr("model_outputs",&model_outputs); // 1,3,3,2160,3840 (800,1400)
+    (*handle)->inferEngine.get_attr("model_inputs", model_inputs); // 1,3,3,1080,1920 (400,700)
+    (*handle)->inferEngine.get_attr("model_outputs", model_outputs); // 1,3,3,2160,3840 (800,1400)
 
     // --set patch configs
     int m_input_width = *(model_inputs.end() - 1);
     int m_input_height = *(model_inputs.end() - 2);
     int nif = *(model_inputs.end() - 4);
     int m_output_width = *(model_outputs.end() - 1);
-    (*handle)->patchConfig.scale = m_output_width / m_input_width; // Note: do not support fractional SR 
+    (*handle)->patchConfig.scale = m_output_width / m_input_width; // Note: do not support fractional SR
     (*handle)->patchConfig.patchHeight = m_input_height;
     (*handle)->patchConfig.patchWidth = m_input_width;
     (*handle)->patchConfig.dims = input_dims;
@@ -332,7 +332,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
         auto patchList = smartPatch->getInputPatches();
         auto outputPatchList = smartPatch->getOutputPatches();
 
-#ifdef ENABLE_PERF 
+#ifdef ENABLE_PERF
     auto totalStartTime = Time::now();
 #endif
 
@@ -348,8 +348,8 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
     }
 
 	// -wait for all the tasks finish
-        handle->threadExecutor->wait_all(patchList.size());	
-#ifdef ENABLE_PERF 
+        handle->threadExecutor->wait_all(patchList.size());
+#ifdef ENABLE_PERF
         auto duration = get_duration_ms_till_now(totalStartTime);
         std::cout << "[PERF] " << "Patch inference with memory copy - Latency: " << double_to_string(duration) <<"ms"<<std::endl;
         std::cout << "[PERF] " << "Patch inference with memory copy - Throughput: " << double_to_string(handle->patchConfig.nif* 1000.0 / duration) <<"FPS"<<std::endl;
@@ -368,7 +368,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
             ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in Smart Patch");
             return IVSRStatus::UNKNOWN_ERROR;
         }
-        
+
         delete smartPatch;
         // notify user
         cb->ivsr_cb(cb->args);
@@ -378,7 +378,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
         ivsr_status_log(IVSRStatus::EXCEPTION_ERROR, e.what());
         return IVSRStatus::UNKNOWN_ERROR;
     }
-    
+
     return IVSRStatus::OK;
 }
 
@@ -416,7 +416,7 @@ IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs){
             }
             configs = configs->next;
         }
-        
+
         // reconfig ov_engine ?
 
     }catch(exception e){
@@ -440,7 +440,7 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
         {
             int* input_tensor_desc = (int*) value;
             ov::Shape input_shape;
-            handle->inferEngine->get_attr("model_inputs",&input_shape);
+            handle->inferEngine.get_attr("model_inputs", input_shape);
             for(auto s : input_shape){
                 *input_tensor_desc = s;
                 input_tensor_desc++;
@@ -448,10 +448,10 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
             break;
         }
         case IVSRAttrKey::OUTPUT_TENSOR_DESC:
-        {    
+        {
             int* output_tensor_desc = (int*) value;
             ov::Shape output_shape;
-            handle->inferEngine->get_attr("model_outputs",&output_shape);
+            handle->inferEngine.get_attr("model_outputs", output_shape);
             for(auto s : output_shape){
                 *output_tensor_desc = s;
                 output_tensor_desc++;
@@ -459,19 +459,23 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
             break;
         }
         case IVSRAttrKey::NUM_INPUT_FRAMES:
-        {    
+        {
             int* nif = (int*) value;
             *nif = handle->patchConfig.nif;
             break;
         }
         case IVSRAttrKey::INPUT_DIMS:
         {
-            handle->inferEngine->get_attr("input_dims", value); 
+            size_t dims = 0;
+            handle->inferEngine.get_attr("input_dims", dims);
+            *((size_t *)value) = dims;
             break;
         }
         case IVSRAttrKey::OUTPUT_DIMS:
         {
-            handle->inferEngine->get_attr("output_dims",value);
+            size_t dims = 0;
+            handle->inferEngine.get_attr("output_dims", dims);
+            *((size_t *)value) = dims;
             break;
         }
         default:
@@ -490,10 +494,10 @@ IVSRStatus ivsr_deinit(ivsr_handle handle) {
     }
 
     try {
-        if (handle->inferEngine) {
-            delete handle->inferEngine;
-            handle->inferEngine = nullptr;
-        }
+        auto p = handle->inferEngine.get_impl();
+        if (p != nullptr)
+            delete p;
+
         if (handle->threadExecutor) {
             delete handle->threadExecutor;
             handle->threadExecutor = nullptr;

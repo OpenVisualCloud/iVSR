@@ -82,14 +82,15 @@ private:
 };
 
 
-class ov_engine : public engine {
+class ov_engine : public engine<ov_engine> {
 public:
     ov_engine(std::string device,
               std::string model_path,
               std::string custom_lib,
               std::map<std::string, ov::AnyMap> configs,
               const std::vector<size_t>& reshape_settings)
-        : engine(device),
+        : engine(this),
+          device_(device),
           model_path_(model_path),
           custom_lib_(custom_lib),
           configs_(configs),
@@ -97,11 +98,40 @@ public:
         //init();
     }
 
-    IBasicVSRStatus init();
+    IBasicVSRStatus init_impl();
 
-    IBasicVSRStatus run(InferTask::Ptr task);
+    IBasicVSRStatus run_impl(InferTask::Ptr task);
 
-    IBasicVSRStatus get_attr(std::string key, void* value);
+    template <typename T>
+    IBasicVSRStatus get_attr_impl(const std::string& key, T& value) {
+        static_assert(std::is_same<T, ov::Shape>::value || std::is_same<T, size_t>::value,
+                      "get_attr() is only supported for 'ov::Shape' and 'size_t' types");
+
+        auto extend_shape = [](ov::Shape& shape, size_t dims) {
+            if (shape.size() < dims)
+                for (size_t i = shape.size(); i < dims; i++)
+                    shape.insert(shape.begin(), 1);
+        };
+
+        if constexpr (std::is_same<T, ov::Shape>::value) {
+            if (key == "model_inputs" || key == "model_outputs") {
+                ov::Shape shape = (key == "model_inputs") ? input_.get_shape() : output_.get_shape();
+                extend_shape(shape, size_t{5});
+                value = shape;
+            } else {
+                return ERROR;
+            }
+        } else if constexpr (std::is_same<T, size_t>::value) {
+            if (key == "input_dims" || key == "output_dims") {
+                const auto& shape = (key == "input_dims") ? input_.get_shape() : output_.get_shape();
+                value = shape.size() < 5 ? 5 : shape.size();
+            } else {
+                return ERROR;
+            }
+        }
+
+        return SUCCESS;
+    }
 
     inferReqWrap::Ptr get_idle_request() {
         std::unique_lock<std::mutex> lock(mutex_);
@@ -124,7 +154,7 @@ public:
         cv_.notify_one();
     }
 
-    void wait_all() {
+    void wait_all_impl() {
 #ifdef ENABLE_LOG
         std::cout << "[Trace]: " << "ov_engine wait_all: " << "idleIds_ size:" << idleIds_.size() << " requests_ size:" << requests_.size() << std::endl;
 #endif
@@ -137,9 +167,9 @@ public:
     ~ov_engine(){
         requests_.clear();
     }
-    
-private:
 
+private:
+    std::string device_;
     //infer request queue length
     const int queueLen_ = 256;
     std::queue<size_t> idleIds_;

@@ -16,6 +16,7 @@
 
 #include "ivsr_thread_local.hpp"
 #include "../engine.hpp"
+#include "../ov_engine.hpp"
 
 namespace IVSRThread {
 
@@ -48,7 +49,7 @@ public:
      * @brief Constructor
      * @param config Thread executor parameters
      */
-    explicit IVSRThreadExecutor(const Config& config, engine* engine);
+    explicit IVSRThreadExecutor(const Config& config, engine<ov_engine>* engine);
 
     /**
      * @brief A class destructor

@@ -49,7 +49,7 @@ struct IVSRThreadExecutor::Impl {
         
     };
 
-    explicit Impl(const Config& config, engine* engine)
+    explicit Impl(const Config& config, engine<ov_engine>* engine)
         : _config{config},
         _engine(engine),
           _streams([this] {
@@ -152,13 +152,13 @@ struct IVSRThreadExecutor::Impl {
     std::queue<Task> _taskQueue;
     bool _isStopped = false;
     ThreadLocal<std::shared_ptr<Stream>> _streams; 
-    engine* _engine;
+    engine<ov_engine>* _engine;
     Time::time_point _startTime = Time::time_point::max();
     Time::time_point _endTime = Time::time_point::min();    
 };
 
 
-IVSRThreadExecutor::IVSRThreadExecutor(const Config& config, engine* engine) : _impl{new Impl{config, engine}} {}
+IVSRThreadExecutor::IVSRThreadExecutor(const Config& config, engine<ov_engine>* engine) : _impl{new Impl{config, engine}} {}
 
 IVSRThreadExecutor::~IVSRThreadExecutor() {
     {

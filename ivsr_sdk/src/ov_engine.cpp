@@ -16,7 +16,7 @@
 
 typedef std::chrono::high_resolution_clock Time;
 
-IBasicVSRStatus ov_engine::init()
+IBasicVSRStatus ov_engine::init_impl()
 {
     if (custom_lib_ != "")
         instance_.add_extension(custom_lib_);
@@ -109,12 +109,12 @@ IBasicVSRStatus ov_engine::init()
     }
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << "ov_engine init successfully" << std::endl;
-#endif 
+#endif
 
     return SUCCESS;
 }
 
-IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
+IBasicVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
     //construct the input tensor
     if(task->inputPtr_ == nullptr || task->outputPtr_ == nullptr) {
         std::cout << "[Error]: " << "invalid input buffer pointer" << std::endl;
@@ -145,10 +145,10 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
         auto cbTask = task;
 
         request->call_back();
-        //call application callback function 
-	cbTask->_callbackQueue();     
+        //call application callback function
+	cbTask->_callbackQueue();
     });
-    
+
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << "input: " << input_.get_element_type().get_type_name() << " " << input_.get_shape() << std::endl;
     std::cout << "[Trace]: " << "output: " << output_.get_element_type().get_type_name() << " " << output_.get_shape() << std::endl;
@@ -160,42 +160,10 @@ IBasicVSRStatus ov_engine::run(InferTask::Ptr task) {
     ov::Tensor output_tensor(output_.get_element_type(), output_.get_shape(), task->outputPtr_);
     inferReq->set_output_tensor(output_tensor);
     inferReq->start_async();
-    
+
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << "ov_engine run: start task inference" << std::endl;
 #endif
 
-    return SUCCESS;
-}
-
-
-IBasicVSRStatus ov_engine::get_attr(const std::string key, void* value) {
-    auto extend_shape = [](ov::Shape &shape, size_t dims) {
-        if (shape.size() < dims)
-            for (size_t i = shape.size(); i < dims; i++)
-                shape.insert(shape.begin(), 1);
-    };
-
-    if (key == "model_inputs") {
-        ov::Shape* input_shape = (ov::Shape*)value;
-        auto shape = input_.get_shape();
-        extend_shape(shape, 5);
-        *input_shape = shape;
-    } else if (key == "model_outputs") {
-        ov::Shape* output_shape = (ov::Shape*)value;
-        auto shape = output_.get_shape();
-        extend_shape(shape, 5);
-        *output_shape = shape;
-    } else if (key == "input_dims") {
-        auto input_shape = input_.get_shape();
-        size_t* dims = (size_t*)value;
-        *dims = input_shape.size() < 5 ? 5 : input_shape.size();
-    } else if (key == "output_dims") {
-        auto output_shape = output_.get_shape();
-        size_t* dims = (size_t*)value;
-        *dims = output_shape.size() < 5 ? 5 : output_shape.size();
-    } else {
-        return ERROR;
-    }
     return SUCCESS;
 }

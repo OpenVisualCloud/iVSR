@@ -14,52 +14,52 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <functional>
 
 using namespace std;
 
+template<typename Derived>
 class engine {
+private:
+    // Function objects for type-erased calls to interface methods
+    std::function<IBasicVSRStatus()> init_func;
+    std::function<IBasicVSRStatus(InferTask::Ptr task)> run_func;
+    std::function<void()> wait_all_func;
+    Derived* _derived;
+
 public:
-    using Ptr = std::shared_ptr<engine>;
-    /**
-     * @brief Construct the engine object with device information
-     * 
-     * @param device 
-     */
-    engine(std::string device) : device_(device) {}
+    // Template constructor binds the provided methods of the derived engine implementation
+    engine(Derived* derived)
+        : _derived(derived),
+          init_func([=]() -> IBasicVSRStatus { return _derived->init_impl(); }),
+          run_func([=](InferTask::Ptr task) -> IBasicVSRStatus { return _derived->run_impl(task); }),
+          wait_all_func([=]() { _derived->wait_all_impl(); })
+    {}
 
-    /**
-     * @brief initialize the engine and prepare needed resources.
-     * 
-     * @param model_path 
-     * @return IBasicVSRStatus 
-     */
-    virtual IBasicVSRStatus init() = 0;
+    engine() = default;
 
-    /**
-     * @brief Infer one task
-     * 
-     * @param task 
-     * @return IBasicVSRStatus 
-     */
-    virtual IBasicVSRStatus run(InferTask::Ptr task) = 0;
+    // Public interface methods call the type-erased std::function members
+    IBasicVSRStatus init() {
+        return init_func();
+    }
 
-    /**
-     * @brief Get the engine attribute information.
-     * 
-     * @param key 
-     * @param value 
-     * @return IBasicVSRStatus 
-     */
-    // virtual IBasicVSRStatus get_attr(std::string key, std::string &value) = 0;
-    virtual IBasicVSRStatus get_attr(std::string key, void* value)=0;
+    IBasicVSRStatus run(InferTask::Ptr task) {
+        return run_func(task);
+    }
 
-    virtual void wait_all() = 0;
+    // The templated get_attr method delegates to the derived class's method
+    template <typename T>
+    IBasicVSRStatus get_attr(const std::string& key, T& value) {
+        // Using CRTP style static_cast to delegate to the actual implementation provided by the derived class
+        // For this to work, the derived class must implement get_attr_impl with the appropriate signature
+        return _derived->get_attr_impl(key, value);
+    }
 
-    virtual ~engine(){}
-    
-protected:
-    std::string device_;
+    void wait_all() {
+        wait_all_func();
+    }
 
+    Derived* get_impl() const { return _derived; }
 };
 
 #endif //COMMON_ENGINE_HPP
