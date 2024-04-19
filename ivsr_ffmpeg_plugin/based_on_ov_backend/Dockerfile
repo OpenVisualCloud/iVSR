@@ -101,13 +101,13 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
 ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_LIBRARY_PATH
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_OV1_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.1
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.1/openvino/install
+ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.1
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.1/openvino/install
 
 COPY . $IVSR_DIR
 RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name" && \
-  cd ${IVSR_OV1_GPU_OPT_DIR} && \
+  cd ${IVSR_OV_DIR} && \
   bash build.sh
 
 ARG CUSTOM_IE_DIR=${CUSTOM_OV_INSTALL_DIR}/runtime

@@ -10,6 +10,9 @@ REFERENCE_output_fn7500_CPU_int8=1b49f19c5807b42c07abee6df3873d50
 REFERENCE_output_fn7500_GPU_fp32=aab52cc0fba1ae26934c530427105eaf
 REFERENCE_output_fn7500_GPU_int8=9979bbb9abc71a65dc393d3ec2dd1fac
 
+#BasicVSR model need to set extension and op_xml options
+EXTENSION=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so
+OP_XML=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml
 
 # Generate 7500 frames test video
 generate_test_video(){
@@ -40,13 +43,13 @@ stress_test()
         mkdir ${log_dir}
     fi
 
-    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y 
-            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' output_fn7500_${device}_${model_type}.mp4"
-    
+    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y
+            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}&extension=${EXTENSION}&op_xml=${OP_XML}' output_fn7500_${device}_${model_type}.mp4"
+
     start_time=`date +%s`
     ${command} > ${log_dir}/stress_test_long_${device}_${model_type}.log
     end_time=`date +%s`
-    
+
     duration=$[ $end_time - $start_time ]
 
     check_result ${model_type} ${device} ${reference_md5} ${duration}

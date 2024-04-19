@@ -56,7 +56,7 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_CPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string extension = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
@@ -87,14 +87,14 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_GPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string extension = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = extension.c_str();
     config_device->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
@@ -125,14 +125,14 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_MultiGPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string extension = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = extension.c_str();
     config_device->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
@@ -165,7 +165,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string custom_lib = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
@@ -229,14 +229,14 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string custom_lib = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
     config_customlib->next = nullptr;
     config_device->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
     config_cldnn->value = cldnn_config.c_str();
@@ -299,14 +299,14 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     config_device->next = nullptr;
     config->next = config_device;
 
-    std::string custom_lib = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
     config_customlib->next = nullptr;
     config_device->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
     config_cldnn->value = cldnn_config.c_str();

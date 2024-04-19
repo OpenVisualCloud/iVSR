@@ -190,11 +190,11 @@ Please note that all the paths specified by options should exist and do not end 
 
 ```bash
 # BasicVSR sample on CPU
-./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=CPU          
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=CPU          
 # BasicVSR sample on Single GPU
-./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=GPU
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=GPU
 # BasicVSR sample on Multiple-GPUs
-./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
+./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
 ```
 ###  **EDSR Sample**
 ```bash

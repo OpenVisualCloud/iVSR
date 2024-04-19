@@ -124,9 +124,9 @@ ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
 
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2023.2
+ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2023.2
 
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_GPU_OPT_DIR}/openvino/install
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_OV_DIR}/openvino/install
 ARG IVSR_SDK_DIR=${IVSR_DIR}/ivsr_sdk
 
 RUN apt-get update && \
@@ -171,7 +171,7 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
 
 ARG OPENVINO_BRANCH="releases/2023/2"
 
-WORKDIR ${IVSR_GPU_OPT_DIR}
+WORKDIR ${IVSR_OV_DIR}
 RUN git clone https://github.com/openvinotoolkit/openvino.git --depth 1 -b ${OPENVINO_BRANCH}
 
 RUN git config --global user.email "noname@example.com" && \

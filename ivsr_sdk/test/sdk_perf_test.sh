@@ -7,12 +7,12 @@ nframe=120
 
 function benchmark_app_test()
 {
-    cd /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release
+    cd /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release
     d_array=(`echo $2 | tr '.:,' ' '`)
     p_array=(`echo $4 | tr '/' ' '`)
     device_name=${d_array[0]}
     resolu=${p_array[7]}
-    echo "--------${1}_${device_name}_${3}_${resolu}_${5}.log--------" 
+    echo "--------${1}_${device_name}_${3}_${resolu}_${5}.log--------"
     ./benchmark_app -m /home/media/djx/EDSR-PyTorch/src/ov_22_3_models/edsr.xml -d $2 -hint latency -infer_precision $3 > /home/media/djx/benchmark_test_log/${1}_${device_name}_${3}_1080_${5}_latency.log
     sleep 5
     ./benchmark_app -m /home/media/djx/EDSR-PyTorch/src/ov_22_3_models/edsr.xml -d $2 -hint throughput -infer_precision $3 > /home/media/djx/benchmark_test_log/${1}_${device_name}_${3}_1080_${5}_throughput.log
@@ -26,14 +26,14 @@ function perf_test()
     p_array=(`echo $4 | tr '/' ' '`)
     device_name=${d_array[0]}
     resolu=${p_array[7]}
-    echo "--------${1}_${device_name}_${3}_${resolu}_${5}.log--------" 
+    echo "--------${1}_${device_name}_${3}_${resolu}_${5}.log--------"
     ./vsr_sample --model_path=/home/media/djx/EDSR-PyTorch/src/ov_22_3_models/edsr.xml --data_path=$4 --nig=$nframe --device=$2  --normalize_factor=1.0 --precision=$3 > ./perf_test_log/${1}_${device_name}_${3}_${resolu}_${5}.log
     sleep 5
-    
+
 }
 
 # --build OV enable oneDNN
-cd /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino
+cd /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino
 rm -r en_install
 rm -r en_build
 ./enablednn_build.sh
@@ -58,7 +58,7 @@ for d in ${device[@]}; do
 done
 
 # --build OV disable oneDNN
-cd /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino
+cd /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino
 rm -r dis_install
 rm -r dis_build
 ./disablednn_build.sh

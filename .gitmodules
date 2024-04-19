@@ -1,20 +1,20 @@
-[submodule "ivsr_gpu_opt/based_on_openvino_2022.1/openvino"]
-	path = ivsr_gpu_opt/based_on_openvino_2022.1/openvino
+[submodule "ivsr_ov/based_on_openvino_2022.1/openvino"]
+	path = ivsr_ov/based_on_openvino_2022.1/openvino
 	url = https://github.com/openvinotoolkit/openvino.git
 	branch = releases/2022/1
 [submodule "ffmpeg"]
 	path = ivsr_ffmpeg_plugin/based_on_ov_backend/ffmpeg
 	url = https://github.com/ffmpeg/ffmpeg.git
 	branch = release/5.1
-[submodule "ivsr_gpu_opt/based_on_openvino_2022.3/openvino"]
-	path = ivsr_gpu_opt/based_on_openvino_2022.3/openvino
+[submodule "ivsr_ov/based_on_openvino_2022.3/openvino"]
+	path = ivsr_ov/based_on_openvino_2022.3/openvino
 	url = https://github.com/openvinotoolkit/openvino.git
 	branch = releases/2022/3
 [submodule "ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg"]
 	path = ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
 	url = https://github.com/ffmpeg/ffmpeg.git
 	branch = release/6.1
-[submodule "ivsr_gpu_opt/based_on_openvino_2023.2/openvino"]
-	path = ivsr_gpu_opt/based_on_openvino_2023.2/openvino
+[submodule "ivsr_ov/based_on_openvino_2023.2/openvino"]
+	path = ivsr_ov/based_on_openvino_2023.2/openvino
 	url = https://github.com/openvinotoolkit/openvino.git
 	branch = releases/2023/2

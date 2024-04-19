@@ -1,30 +1,29 @@
 #!/bin/sh
-FFMPEG_IVSR_SDK_PLUGIN_DIR=$PWD
-cd ${FFMPEG_IVSR_SDK_PLUGIN_DIR}/../../ivsr_gpu_opt/based_on_openvino_2022.3
-git submodule update --init ./openvino
-cd openvino
-git submodule update --init --recursive
-git checkout 2022.3.0
+# Default value for the ENABLE_GPU_PATCH flag
+ENABLE_GPU_PATCH="true"
 
-cp ../patches/*.patch ./
-for patch_file in $(find -iname "*.patch" | sort -n);
-do
-    echo "Applying: ${patch_file}";
-    git am --whitespace=fix ${patch_file};
+# Parse the --enable_gpu_patch flag
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --enable_gpu_patch)
+			shift
+			value=$(echo $1 | tr '[:upper:]' '[:lower:]')
+            if [ "$value" == "false" ]; then
+				ENABLE_GPU_PATCH=$value
+			fi
+            shift
+            ;;
+        *)
+            echo "Usage: $0 --enable_gpu_patch [true|false]"
+            exit 1
+            ;;
+    esac
 done
 
-cd ${FFMPEG_IVSR_SDK_PLUGIN_DIR}
-git submodule update --init ./ffmpeg
-
-cd ${FFMPEG_IVSR_SDK_PLUGIN_DIR}
-sudo docker build --build-arg http_proxy=$http_proxy \
+docker build --build-arg http_proxy=$http_proxy \
  	--build-arg https_proxy=$https_proxy \
 	--build-arg no_proxy=$no_proxy \
-	--build-arg UBUNTU_VERSION=22.04 \
 	--build-arg PYTHON=python3.10 \
-	--build-arg ICD_VER=22.49.25018.23+i554~22.04 \
-	--build-arg LEVEL_ZERO_GPU_VER=1.3.25018.23+i554~22.04 \
-	--build-arg LEVEL_ZERO_VER=1.8.8+i524~u22.04 \
-	--build-arg LEVEL_ZERO_DEV_VER=1.8.8+i524~u22.04 \
+	--build-arg ENABLE_GPU_PATCH=$ENABLE_GPU_PATCH \
 	-f Dockerfile -t ffmpeg_ivsr_sdk \
 	../../

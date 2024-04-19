@@ -55,14 +55,14 @@ If building successfully, you can see a docker image named `ffmpeg_ivsr_sdk` .
 ```bash
 sudo docker run -itd --name ffmpeg_ivsr_sdk --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/snd:/dev/snd ffmpeg_ivsr_sdk:latest bash
 sudo docker exec -it ffmpeg_ivsr_sdk bash
-source /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/install/setupvars.sh
+source /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/install/setupvars.sh
 ldconfig
 ```
 ## How to run inference with FFmpeg-plugin
-- Use FFmpeg-plugin to run BasicVSR inference
+- Use FFmpeg-plugin to run BasicVSR inference, needs to set extension and op_xml options to run BasicVSR model
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
-./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU&extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
 ```
 - Use FFmpeg-plugin to run SVP inference (input must be 1920x1088)
 ```
@@ -92,6 +92,8 @@ Only the options of video filter `dnn_processing` are introduced.
 |backend_configs:device|device for inference task|CPU|CPU or GPU|
 |backend_configs:model_type|type for models|0|0 for BasicVSR, 1 for SVP, 2 for EDSR|
 |backend_configs:normalize_factor|factor for normalization|1.0|1.0 for BasicVSR and SVP, 255.0 for EDSR|
+|backend_configs:extension|extension lib file full path, required for loading BasicVSR model|
+|backend_configs:op_xml|custom op xml file full path, required for loading BasicVSR model|
 
 Apart from the common AVOptions which can be set in the normal FFmpeg command line with format `AVOption=value`, there are two options `nireq` and `device` to be set with the `backend_configs` option. The command format is `backend_configs='nireq=value&device=value'` when you want to set both of them.
 
@@ -100,4 +102,4 @@ Apart from the common AVOptions which can be set in the normal FFmpeg command li
 OpenVINO models with different precisions can be supported by the FFmpeg-plugin. In this release, we have validated FP32 and INT8 models which are converted and quantized by the model optimizer of OpenVINO 2022.3.
 
 The [Custom OpenVINO™ Operations](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_add_openvino_ops.html) is a great feature of OpenVINO which allows users to support models with operations that OpenVINO does not support out-of-the-box. 
-This FFmpeg-plugin supports BasicVSR which utilizes custom operations. There is no additional options required for the command line in the case you have set the right path of the model. Please be noted that the dependent files are located in the docker container folder `/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/flow_warp_custom_op` and `/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/bin/intel64/Release/lib`, do not make any changes to them.
+This FFmpeg-plugin supports BasicVSR which utilizes custom operations. It requires to set extension and op_xml options in command line to run BasicVSR model. The extension lib file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so` and the op xml file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml`. And please note that the libcustom_extension.so and flow_warp.xml are generated during the build of OpenVINO after apply OpenVINO's patches.

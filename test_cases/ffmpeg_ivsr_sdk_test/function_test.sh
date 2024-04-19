@@ -9,6 +9,10 @@ REFERENCE_output_fn30_CPU_int8=ef007cffb255a71c578f3263fcc890f6
 REFERENCE_output_fn30_GPU_fp32=6ff5adf02f53b4a175fba6cfd601c541
 REFERENCE_output_fn30_GPU_int8=af4da8991755105833f92f20147146fc
 
+#BasicVSR model need to set extension and op_xml options
+EXTENSION=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so
+OP_XML=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml
+
 # Generate 30 frames test video
 generate_test_video(){
     cd ${FFMPEG_BIN_DIR}
@@ -38,13 +42,13 @@ function_test()
         mkdir ${log_dir}
     fi
 
-    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y 
-            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' output_fn30_${device}_${model_type}.mp4"
-    
+    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y
+            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}&extension=${EXTENSION}&op_xml=${OP_XML}' output_fn30_${device}_${model_type}.mp4"
+
     start_time=`date +%s`
     ${command} > ${log_dir}/function_test_${device}_${model_type}.log
     end_time=`date +%s`
-    
+
     duration=$[ $end_time - $start_time ]
 
     check_result ${model_type} ${device} ${reference_md5} ${duration}

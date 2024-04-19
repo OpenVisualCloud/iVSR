@@ -22,5 +22,5 @@ sudo docker build --build-arg http_proxy=$http_proxy \
 	--build-arg LEVEL_ZERO_VER=1.8.8+i524~u22.04 \
 	--build-arg LEVEL_ZERO_DEV_VER=1.8.8+i524~u22.04 \
 	--network=host \
-        -f Dockerfile -t ivsr_gpu_opt \
+        -f Dockerfile -t ivsr_ov \
 	.

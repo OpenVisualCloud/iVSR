@@ -110,8 +110,8 @@ RUN apt-get update && \
 ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_LIBRARY_PATH
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_OV3_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/install
+ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino/install
 
 RUN apt-get update && \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -153,10 +153,26 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python3
 
-COPY ./openvino $IVSR_OV3_GPU_OPT_DIR
+ARG OV_REPO=https://github.com/openvinotoolkit/openvino.git
+ARG OV_VERSION=2022.3.0
+RUN git clone ${OV_REPO} ${IVSR_OV_DIR} && \
+    cd ${IVSR_OV_DIR} && \
+    git checkout 2022.3.0 && \
+    git submodule update --init --recursive
+
 RUN git config --global user.email "noname@example.com" && \
-  git config --global user.name "no name" && \
-  cd ${IVSR_OV3_GPU_OPT_DIR} && \
+  git config --global user.name "no name"
+
+COPY ./patches/*.patch ${IVSR_OV_DIR}/../patches/
+RUN cd ${IVSR_OV_DIR} && \
+    { set -e; \
+    for patch_file in $(find ../patches -iname "*.patch" | sort -n); do \
+        echo "Applying: ${patch_file}"; \
+        git am --whitespace=fix ${patch_file}; \
+    done; }
+RUN rm -rf ${IVSR_OV_DIR}/../patches
+
+RUN cd ${IVSR_OV_DIR} && \
   mkdir build && cd build && \
   cmake \
     -DCMAKE_INSTALL_PREFIX=${PWD}/../install \
@@ -183,7 +199,7 @@ RUN git config --global user.email "noname@example.com" && \
     -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-  make -j 8 && \
+  make -j $(nproc --all) && \
   make install
 
 ARG CUSTOM_IE_DIR=${CUSTOM_OV_INSTALL_DIR}/runtime

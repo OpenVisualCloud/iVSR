@@ -5,6 +5,10 @@ FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmp
 TEST_VIDEO_NAME=test_video_1080p_fn30.mp4
 TEST_VIDEO_MD5=6fdd9bcfc86db585b5ff9525e162c0c2
 
+#BasicVSR model need to set extension and op_xml options
+EXTENSION=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so
+OP_XML=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml
+
 function usage()
 {
 cat << EOF
@@ -64,10 +68,10 @@ stress_loop_test()
         mkdir ${log_dir}
     fi
 
-    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y 
-            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}' test_out.mp4"
+    command="./ffmpeg -i ${TEST_VIDEO_NAME} -y
+            -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=3:backend_configs='nireq=1&device=${device}&extension=${EXTENSION}&op_xml=${OP_XML}' test_out.mp4"
     end_time=`date +%s`
-    
+
     start_time=`date +%s`
     echo "------ Test ${model_type} model on ${device} ------"
     for i in $(seq $LOOP)

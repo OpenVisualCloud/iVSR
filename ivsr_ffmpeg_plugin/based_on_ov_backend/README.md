@@ -43,7 +43,7 @@ When the docker image is built successfully, you can start a container and set u
 ```
 docker run -itd --name ffmpeg-ov1 --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" --shm-size=128g ffmpeg-ov1-new:latest bash
 docker exec -it ffmpeg-ov1 /bin/bash
-source /workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.1/openvino/install/setupvars.sh
+source /workspace/ivsr/ivsr_ov/based_on_openvino_2022.1/openvino/install/setupvars.sh
 ldconfig
 ```
 The above command lines will start a docker container named `ffmpeg-ov1`.
@@ -77,7 +77,7 @@ Apart from the common AVOptions which can be set in the normal FFmpeg command li
 OpenVINO models with different precisions can be supported by the FFmpeg-plugin. In this release, we have validated FP32 and INT8 models which are converted and quantized by the model optimizer of OpenVINO 2022.1.
 
 The [Custom OpenVINO™ Operations](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_add_openvino_ops.html) is a great feature of OpenVINO which allows users to support models with operations that OpenVINO does not support out-of-the-box. 
-This FFmpeg-plugin supports BasicVSR which utilizes custom operations. There is no additional options required for the command line in the case you have set the right path of the model. Please be noted that the dependent files are located in the docker container folder `/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.1/openvino/flow_warp_custom_op` and `/workspace/ivsr/ivsr_gpu_opt/based_on_openvino_2022.1/openvino/bin/intel64/Release/lib`, do not make any changes to them.
+This FFmpeg-plugin supports BasicVSR which utilizes custom operations. There is no additional options required for the command line in the case you have set the right path of the model. Please be noted that the dependent files are located in the docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.1/openvino/flow_warp_custom_op` and `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.1/openvino/bin/intel64/Release/lib`, do not make any changes to them.
 
 ## (Optional) Intel® Data Center GPU Flex Series Supportive
 The default docker image doesn't include Intel® Data Center GPU Flex Series driver, so you may not be able to accelerate inference with GPU in the FFmpeg pipeline. You can start a docker container by the above steps and install the driver in the docker container.

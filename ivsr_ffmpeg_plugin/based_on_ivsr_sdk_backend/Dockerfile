@@ -43,6 +43,8 @@ LABEL vendor="Intel Corporation"
 
 RUN mkdir -p /workspace/ivsr
 
+ARG ENABLE_GPU_PATCH
+
 # openvino
 RUN apt-get update && \
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --fix-missing \
@@ -93,23 +95,21 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
   make install && \
   cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
-ARG ICD_VER
-ARG LEVEL_ZERO_GPU_VER
-ARG LEVEL_ZERO_VER
-ARG LEVEL_ZERO_DEV_VER
 COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
-RUN apt-get update && \
-    xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt && \
-    apt-get install -y vainfo clinfo && \
-    apt-get clean && \
-    rm -rf  /var/lib/apt/lists/* && \
-    rm ${WORKSPACE}/dgpu_umd_stable_555_0124.txt
+RUN if [ "$ENABLE_GPU_PATCH" = "true" ]; then \
+        apt-get update; \
+        xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt; \
+        apt-get install -y vainfo clinfo; \
+        apt-get clean; \
+        rm -rf  /var/lib/apt/lists/*; \
+    fi
+RUN rm ${WORKSPACE}/dgpu_umd_stable_555_0124.txt
 
 ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_LIBRARY_PATH
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_OV3_GPU_OPT_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_gpu_opt/based_on_openvino_2022.3/openvino/install
+ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino/install
 ARG IVSR_SDK_DIR=${IVSR_DIR}/ivsr_sdk/
 
 RUN apt-get update && \
@@ -152,10 +152,28 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python3
 
-COPY ./ivsr_gpu_opt/based_on_openvino_2022.3/openvino $IVSR_OV3_GPU_OPT_DIR
+ARG OV_REPO=https://github.com/openvinotoolkit/openvino.git
+ARG OV_VERSION=2022.3.0
+RUN git clone ${OV_REPO} ${IVSR_OV_DIR} && \
+    cd ${IVSR_OV_DIR} && \
+    git checkout 2022.3.0 && \
+    git submodule update --init --recursive
+
 RUN git config --global user.email "noname@example.com" && \
-  git config --global user.name "no name" && \
-  cd ${IVSR_OV3_GPU_OPT_DIR} && \
+  git config --global user.name "no name"
+
+COPY ./ivsr_ov/based_on_openvino_2022.3/patches/*.patch ${IVSR_OV_DIR}/../patches/
+RUN if [ "$ENABLE_GPU_PATCH" = "true" ]; then \
+        cd ${IVSR_OV_DIR}; \
+        { set -e; \
+            for patch_file in $(find ../patches -iname "*.patch" | sort -n); do \
+            echo "Applying: ${patch_file}"; \
+            git am --whitespace=fix ${patch_file}; \
+            done; }; \
+    fi
+RUN rm -rf ${IVSR_OV_DIR}/../patches
+
+RUN cd ${IVSR_OV_DIR} && \
   mkdir build && cd build && \
   cmake \
     -DCMAKE_INSTALL_PREFIX=${PWD}/../install \
@@ -182,7 +200,7 @@ RUN git config --global user.email "noname@example.com" && \
     -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-  make -j 8 && \
+  make -j $(nproc --all) && \
   make install && \
   bash ${PWD}/../install/setupvars.sh
 
@@ -226,17 +244,22 @@ RUN apt-get update && \
     libva-dev \
     && \
   rm -rf /var/lib/apt/lists/*
-ENV LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:$LD_LIBRARY_PATH
-ENV LD_LIBRARY_PATH=/usr/local/lib/:$LD_LIBRARY_PATH
-COPY ./ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend ${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend
+ENV LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:/usr/local/lib:$LD_LIBRARY_PATH
+
 ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend
 ARG FFMPEG_DIR=${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
-RUN cd ${FFMPEG_IVSR_SDK_PLUGIN_DIR} && \
-  cp ${FFMPEG_IVSR_SDK_PLUGIN_DIR}/patches/*.patch ${FFMPEG_DIR}/ && \
-  cd ${FFMPEG_DIR} && { set -e; \
+
+ARG FFMPEG_REPO=https://github.com/FFmpeg/FFmpeg.git
+ARG FFMPEG_VERSION=n6.1
+RUN git clone ${FFMPEG_REPO} ${FFMPEG_DIR} && \
+    cd ${FFMPEG_DIR} && \
+    git checkout ${FFMPEG_VERSION}
+COPY ./ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/patches/*.patch ${FFMPEG_DIR}/
+RUN cd ${FFMPEG_DIR} && \
+  { set -e; \
   for patch_file in $(find -iname "*.patch" | sort -n); do \
     echo "Applying: ${patch_file}"; \
-    patch -p1 < "${patch_file}"; \
+    git am --whitespace=fix ${patch_file}; \
   done; }
 
 RUN if [ -f "${CUSTOM_OV_INSTALL_DIR}/setvars.sh" ]; then \

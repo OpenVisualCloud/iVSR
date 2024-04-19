@@ -58,7 +58,7 @@ Please expect `pre-production` quality of current solution.
 Refer to the guide [here](ivsr_sdk/README.md).
 
 ### 2. Run with OpenVINO
-Refer to the guide [here](ivsr_gpu_opt/README.md).
+Refer to the guide [here](ivsr_ov/README.md).
 
 ### 3. Run with FFmpeg
 Refer to the guide [here](ivsr_ffmpeg_plugin/README.md).
