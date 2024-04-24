@@ -99,14 +99,8 @@ IBasicVSRStatus ov_engine::init_impl()
     }
 
     //compile model
-    auto compiledModel = instance_.compile_model(model, device_);
+    compiled_model_ = instance_.compile_model(model, device_);
 
-    for (size_t id = 0; id < queueLen_; id++) {
-        requests_.push_back(std::make_shared<inferReqWrap>(compiledModel ,id,std::bind(&ov_engine::put_idle_request,
-                                                                        this,
-                                                                        std::placeholders::_1)));
-        idleIds_.push(id);
-    }
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << "ov_engine init successfully" << std::endl;
 #endif
@@ -164,6 +158,22 @@ IBasicVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: " << "ov_engine run: start task inference" << std::endl;
 #endif
+
+    return SUCCESS;
+}
+
+IBasicVSRStatus ov_engine::create_infer_requests_impl(size_t requests_num) {
+    if (requests_num < requests_.size()) {
+        std::cout << "[ERROR]: " << "please pass correct requests num.\n";
+        return ERROR;
+    }
+
+    for (int id = requests_.size(); id < requests_num; ++id) {
+        requests_.push_back(std::make_shared<inferReqWrap>(compiled_model_ ,id,std::bind(&ov_engine::put_idle_request,
+                                                                        this,
+                                                                        std::placeholders::_1)));
+        idleIds_.push(id);
+    }
 
     return SUCCESS;
 }

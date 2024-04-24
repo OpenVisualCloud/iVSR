@@ -164,14 +164,18 @@ public:
         });
     }
 
+    IBasicVSRStatus create_infer_requests_impl(size_t requests_num);
+
+    const size_t get_infer_requests_size_impl() {
+        return requests_.size();
+    }
+
     ~ov_engine(){
         requests_.clear();
     }
 
 private:
     std::string device_;
-    //infer request queue length
-    const int queueLen_ = 256;
     std::queue<size_t> idleIds_;
     std::vector<inferReqWrap::Ptr> requests_;
     std::mutex mutex_;
@@ -179,6 +183,7 @@ private:
     //configurations for openvino instances.
     std::map<std::string, ov::AnyMap> configs_;
     ov::Core instance_;
+    ov::CompiledModel compiled_model_;
     std::vector<size_t> reshape_settings_;
 
     std::string custom_lib_;

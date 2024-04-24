@@ -60,6 +60,14 @@ public:
     }
 
     Derived* get_impl() const { return _derived; }
+
+    IBasicVSRStatus create_infer_requests(size_t requests_num) {
+        return _derived->create_infer_requests_impl(requests_num);
+    }
+
+    size_t get_infer_requests_size() {
+        return _derived->get_infer_requests_size_impl();
+    }
 };
 
 #endif //COMMON_ENGINE_HPP

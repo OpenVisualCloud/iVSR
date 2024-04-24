@@ -336,6 +336,16 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
     auto totalStartTime = Time::now();
 #endif
 
+    // create infer requests based on patch list size
+    if (patchList.size() > handle->inferEngine.get_infer_requests_size()) {
+        auto res = handle->inferEngine.create_infer_requests(patchList.size());
+        if (res == -1) {
+            std::cout << "[ERROR]: " << "Failed to creat infer requests!\n";
+            delete smartPatch;
+            return IVSRStatus::GENERAL_ERROR;
+        }
+    }
+
 	// -get data into infer task
         int idx = 0;
 	for(; idx < patchList.size(); idx++ ){
