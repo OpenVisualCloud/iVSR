@@ -52,15 +52,16 @@ typedef enum {
  * 
  */
 typedef enum {
-    INPUT_MODEL   = 0x1,
-    TARGET_DEVICE = 0x2,
-    BATCH_NUM     = 0x3,
-    VERBOSE_LEVEL = 0x4,
-    CUSTOM_LIB    = 0x5,
-    CLDNN_CONFIG  = 0x6,
+    INPUT_MODEL      = 0x1,
+    TARGET_DEVICE    = 0x2,
+    BATCH_NUM        = 0x3,
+    VERBOSE_LEVEL    = 0x4,
+    CUSTOM_LIB       = 0x5,
+    CLDNN_CONFIG     = 0x6,
     NUM_IFER_REQUEST = 0x7,
-    PRECISION = 0x8,
+    PRECISION        = 0x8,
     RESHAPE_SETTINGS = 0x9,
+    INPUT_RES        = 0xA, //!< Required, to specify the input frame resolution>
 }IVSRConfigKey;
 
 typedef enum {
@@ -106,7 +107,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle);
  * @param cb  callback function.
  * @return IVSRStatus 
  */
-IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, int* input_size, ivsr_cb_t* cb);
+IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb);
 
 /**
  * @brief reset the configures for vsr

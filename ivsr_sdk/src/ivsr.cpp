@@ -174,6 +174,7 @@ struct ivsr{
     std::unordered_map<std::string,const char*> vsr_config;
     PatchConfig patchConfig;
     bool patchSolution;
+    std::vector<size_t> input_data_shape; //shape of input data
     ivsr():threadExecutor(nullptr),patchSolution(false){}
 };
 
@@ -190,6 +191,8 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     std::string model = "", device = "", batch = "", infer_precision = "f32";
     std::string verbose = "", custom_lib = "", cldnn_config = "";
     std::vector<size_t> reshape_settings;
+    std::vector<size_t> reso;
+    size_t frame_width = 0, frame_height = 0;
     while(configs!=nullptr){
         IVSRStatus unsupported_status = IVSRStatus::OK;
         std::string unsupported_output = "";
@@ -246,6 +249,12 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
             case IVSRConfigKey::RESHAPE_SETTINGS:
                 reshape_settings = convert_string_to_vector(configs->value);
                 break;
+            case IVSRConfigKey::INPUT_RES:
+                //in format "<width>,<height>"
+                reso = convert_string_to_vector(configs->value);
+                frame_width  = reso[0];
+                frame_height = reso[1];
+                break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
                 unsupported_output.append(std::to_string(configs->key));
@@ -256,6 +265,10 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
         configs = configs->next;
     }
     if(!check_engine_config(model, device)) {
+        return IVSRStatus::UNSUPPORTED_CONFIG;
+    }
+    if(frame_width == 0 || frame_height == 0) {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set INPUT_RES!");
         return IVSRStatus::UNSUPPORTED_CONFIG;
     }
 
@@ -300,29 +313,36 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     std::cout << "[Trace]: " << (*handle)->patchConfig << std::endl;
 #endif
 
+    // generate input data shape
+    std::vector<size_t>& input_shape = (*handle)->input_data_shape;
+    //model input res might not be the same as input frame res
+    std::transform(model_inputs.begin(), model_inputs.end(), std::back_inserter(input_shape),
+                   [](size_t val) { return val; });
+    input_shape[input_shape.size() - 1] = frame_width;
+    input_shape[input_shape.size() - 2] = frame_height;
+
     return IVSRStatus::OK;
 }
 
-IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, int* input_size, ivsr_cb_t* cb){
+IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb){
     if(input_data == nullptr){
         ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_process");
         return IVSRStatus::GENERAL_ERROR;
     }
 
     try{
-        // get input data shape
-        std::vector<int> input_data_shape; // {1,3,3,1080,1920}
-        for(int i = 0; i < handle->patchConfig.dims; i++){
-            input_data_shape.push_back(*(input_size + i));
-        }
+        std::vector<int> int_shape;
+        std::transform(handle->input_data_shape.begin(), handle->input_data_shape.end(), std::back_inserter(int_shape),
+                       [](size_t val) -> int { return static_cast<int>(val); });
 
         // determine whether apply patch solution or not
-        if(handle->patchConfig.patchHeight < *(input_data_shape.end()-2) || handle->patchConfig.patchWidth < *(input_data_shape.end()-1)){
+        if(handle->patchConfig.patchHeight < *(int_shape.end()-2) ||
+           handle->patchConfig.patchWidth  < *(int_shape.end()-1)) {
             handle->patchSolution = true;
         }
 
         // smart patch inference
-        SmartPatch* smartPatch = new SmartPatch(handle->patchConfig,input_data,output_data,input_data_shape,handle->patchSolution);
+        SmartPatch* smartPatch = new SmartPatch(handle->patchConfig, input_data, output_data, int_shape, handle->patchSolution);
         // -prepare data
         auto res = smartPatch->generatePatch();
         if(res == -1){

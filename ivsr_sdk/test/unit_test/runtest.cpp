@@ -196,7 +196,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     cb.args = (void*)(&cb_args);
     count = 0;
 
-    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer,input_size, &cb);
+    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
     EXPECT_EQ(0, res) << "ValidInputTestForProcess_CPU_withCustom test failed";
     
     while (count != 1) {
@@ -267,7 +267,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     cb.args = (void*)(&cb_args);
     count = 0;
 
-    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer,input_size, &cb);
+    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
     EXPECT_EQ(0, res) << "ValidInputTestForProcess_GPU_withCustom test failed";
     
     //wait for the completion callback
@@ -337,7 +337,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     cb.args = (void*)(&cb_args);
     count = 0;
 
-    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer,input_size, &cb);
+    res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
     EXPECT_EQ(0, res) << "ValidInputTestForProcess_MultiGPU_withCustom test failed";
     
     while (count != 1) {

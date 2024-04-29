@@ -210,6 +210,20 @@ int main(int argc, char** argv){
         return -1;
     }
 
+    // 0. Check inputs and retrieve input frame resolution
+    std::cout << "[INFO] " << "Inputs Path: " << data_path << std::endl;
+    std::vector<std::string> filePathList;
+    getFileNames(data_path, filePathList);
+    if (filePathList.size() == 0) {
+        std::cout << "No file in input directory path!" << std::endl;
+        return -1;
+    }
+    std::string imgPath = data_path + "/" + filePathList[0];
+    cv::Mat img = cv::imread(imgPath, cv::IMREAD_COLOR);
+    unsigned int frameHeight = 0, frameWidth = 0;
+    frameHeight = img.rows;
+    frameWidth  = img.cols;
+
     // 1. set ivsr config
     std::list<ivsr_config_t *> configs;
     auto add_config = [&configs](IVSRConfigKey key, const char *value) {
@@ -240,6 +254,10 @@ int main(int argc, char** argv){
     auto reshape_settings = parser.get<std::string>("reshape_values");
     if (!reshape_settings.empty()) add_config(IVSRConfigKey::RESHAPE_SETTINGS, reshape_settings.c_str());
 
+    // in format "<width>,<height>"
+    std::string input_res = std::to_string(frameWidth) + "," + std::to_string(frameHeight);
+    add_config(IVSRConfigKey::INPUT_RES, input_res.c_str());
+
     // 2. initialize ivsr
     ivsr_handle handle = nullptr;
     auto res = ivsr_init(*configs.begin(), &handle);
@@ -255,10 +273,7 @@ int main(int argc, char** argv){
         return -1;
     }
     // 3. prepare input data
-    // 3.1 Get file names
-    std::cout << "[INFO] " << "Inputs Path: " << data_path << std::endl;
-    std::vector<std::string> filePathList;
-    getFileNames(data_path, filePathList);
+    // 3.1 Check the input frames
     if(filePathList.size() < (size_t)nif) {
         std::cout << "Not enough frames for an inference!" << std::endl;
         std::cout << "At least NIF frames in the data_path are needed!" << std::endl;
@@ -296,8 +311,6 @@ int main(int argc, char** argv){
 
     std::cout << "[INFO] " << "Inference start: " << std::endl;
 
-    int input_size[] = { 1, nif, 3, oriHeight, oriWidth };
-
     size_t id = 0;
 #ifdef ENABLE_PERF
     auto totalStartTime = Time::now();
@@ -311,7 +324,7 @@ int main(int argc, char** argv){
         cb.ivsr_cb = completion_callback;
         cb.args = (void*)(&cb_args);
         // 4. inference
-        auto result = ivsr_process(handle, (char *)inputImg.data, (char *)outputImg.data, input_size, &cb);
+        auto result = ivsr_process(handle, (char *)inputImg.data, (char *)outputImg.data, &cb);
         if(result < 0){
             std::cout <<"Failed to process the inference on input data seq." << id <<std::endl;
         }
