@@ -64,7 +64,7 @@ ldconfig
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU&extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
 ```
-- Use FFmpeg-plugin to run SVP inference (input must be 1920x1088)
+- Use FFmpeg-plugin to run SVP inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=1' test_out.mp4
@@ -83,8 +83,6 @@ Only the options of video filter `dnn_processing` are introduced.
 |AVOption name|Description|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
 |dnn_backend|DNN backend framework name|native|ivsr|
-|input_width|input video width|1920|1920|
-|input_height|input video height|1080|1080|
 |model|path to model file|NULL|Available full path of the released model files|
 |input|input name of the model|NULL|input|
 |output|output name of the model|NULL|output|
