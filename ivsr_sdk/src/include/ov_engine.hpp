@@ -95,7 +95,7 @@ public:
           custom_lib_(custom_lib),
           configs_(configs),
           reshape_settings_(reshape_settings) {
-        //init();
+        init();
     }
 
     IBasicVSRStatus init_impl();

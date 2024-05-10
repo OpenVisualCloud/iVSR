@@ -53,11 +53,6 @@ IBasicVSRStatus ov_engine::init_impl()
             channels_index = ov::layout::channels_idx(model_layout);
             h_index = ov::layout::height_idx(model_layout);
             w_index = ov::layout::width_idx(model_layout);
-
-            if(tensor_shape[h_index] % 4 != 0 || tensor_shape[w_index] % 4 != 0){
-                std::cout << "[Error]: " << "Current model only supports inputs that are multiples of 4." << std::endl;
-                return ERROR;
-            }
         }
 
 #ifdef ENABLE_LOG

@@ -282,12 +282,6 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     // 3.construct and initialization
     // - initialize inference engine
     (*handle)->inferEngine = {new ov_engine(device, model, custom_lib, engine_configs, reshape_settings)};
-    IBasicVSRStatus status;
-    status = (*handle)->inferEngine.init();
-    if(status != IBasicVSRStatus::SUCCESS){
-        ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, "in ivsr_init");
-        return IVSRStatus::UNSUPPORTED_SHAPE;
-    }
     // -construct IVSRThreadExecutor object
     IVSRThread::Config executorConfig;
     (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine.get_impl());
