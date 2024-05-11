@@ -216,7 +216,8 @@ check_result()
     test_md5=`md5sum ${out_video_name} | awk {'print $1'}`
     reference_md5=$(grep "^${out_video_name}:" ${OUT_MD5_FILE} | cut -d':' -f2)
     if [ ${test_md5} = ${reference_md5} ];then
-        echo "test_case: function_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Pass" >> ${LOG_DIR}/function_test_total.log
+        echo "test_case: function_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Pass" 
+	echo "test_case: function_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Pass" >> ${LOG_DIR}/function_test_total.log
     else
         echo "test_case: function_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Fail, error_info: MD5 Error" >> ${LOG_DIR}/function_test_total.log
         echo "test_case: function_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Fail, error_info: MD5 Error" >> ${LOG_DIR}/function_test_fail.log
