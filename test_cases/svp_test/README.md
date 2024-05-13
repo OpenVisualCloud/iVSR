@@ -54,14 +54,14 @@ Check log `test_case: svp test, duration: n/a, result: [Pass], error_info: close
 # enter ivsr_sdk project directory
 cd /path_to_sdk
 # run vsr_sample command to load se model
-./bin/vsr_sample --model_path=./se-qnet3m-16165-2024.04-f16/qnet3m_16165.xml --data_path=./svp_test/test_images --nig=1 --device=CPU --save_predictions=true --scale_factor=1 --reshape_values="(1,3,1088,1920)"
+./bin/vsr_sample --model_path=./svp_test/se-qnet3m-16165-2024.04-f16/qnet3m_16165.xml --data_path=./svp_test/test_images --nig=1 --device=CPU --save_predictions=true --scale_factor=1 --reshape_values="(1,3,1088,1920)"
 # rename the output image file
 mv outputs/test_input.png outputs/test_output.png
 ```
 * expected results:
 ```shell
 # please run result checking script
-python3 svp_test/check_ims.py ./se-qnet3m-16165-2024.04-f16/ref-out.png outputs/test_output.png --criterion ./se-qnet3m-16165-2024.04-f16/criterion.txt
+python3 ./svp_test/check_ims.py ./svp_test/se-qnet3m-16165-2024.04-f16/ref-out.png outputs/test_output.png --criterion ./svp_test/se-qnet3m-16165-2024.04-f16/criterion.txt
 
 ```
 Check log `test_case: svp test, duration: n/a, result: [Pass], error_info: close to reference image` and test case passed, or it is failed.
@@ -73,14 +73,14 @@ Check log `test_case: svp test, duration: n/a, result: [Pass], error_info: close
 # enter ivsr_sdk project directory
 cd /path_to_sdk
 # run vsr_sample command to load dunet model
-./bin/vsr_sample --model_path=./basic-dunet-2024.01/dunet.xml --data_path=./svp_test/test_images --nig=1 --device=CPU --save_predictions=true --scale_factor=1 --reshape_values="(1,3,1088,1920)"
+./bin/vsr_sample --model_path=./svp_test/basic-dunet-2024.01/dunet.xml --data_path=./svp_test/test_images --nig=1 --device=CPU --save_predictions=true --scale_factor=1 --reshape_values="(1,3,1088,1920)"
 # rename the output image file
 mv outputs/test_input.png outputs/test_output.png
 ```
 * expected results:
 ```shell
 # please run result checking script
-python3 svp_test/check_ims.py ./basic-dunet-2024.01/ref-out.png outputs/test_output.png --criterion ./basic-dunet-2024.01/criterion.txt
+python3 ./svp_test/check_ims.py ./svp_test/basic-dunet-2024.01/ref-out.png outputs/test_output.png --criterion ./svp_test/basic-dunet-2024.01/criterion.txt
 
 ```
 Check log `test_case: svp test, duration: n/a, result: [Pass], error_info: close to reference image` and test case passed, or it is failed.

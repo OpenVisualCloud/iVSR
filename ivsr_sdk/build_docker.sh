@@ -14,7 +14,7 @@ if [ ! -z "$2" ]; then
 	echo "docker tag $TAG"
 fi
 
-sudo docker build --build-arg http_proxy=$http_proxy \
+docker build --build-arg http_proxy=$http_proxy \
  	--build-arg https_proxy=$https_proxy \
 	--build-arg no_proxy=$no_proxy \
 	--build-arg UBUNTU_VERSION=22.04 \
