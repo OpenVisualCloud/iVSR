@@ -26,7 +26,7 @@ const std::string keys =
     "{save_path         |./outputs| Optional. Path to a folder to save predictions.}"
     "{cldnn_config      | | Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
     "{nig               |1| Optional. Number of input data groups for inference. }"
-    "{normalize_factor  |255.0| Optional. Whether to normalize input and output or not.}"
+    "{normalize_factor  |1.0| Optional. Normalization factor is equal to the value range required by models, default is 1.0. 255.0 for Enhanced EDSR, 1.0 for other models.}"
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
     "{precision         |f32| Required for inference precision.fp32:f32, fp16:f16, bf16:bf16}"
     "{reshape_values    | | Optional. Reshape network to fit the input image size. e.g. --reshape_values=\"(1,3,720,1280)\"}"
@@ -299,7 +299,7 @@ int main(int argc, char** argv){
         /* how to check image size and model input? */
 
         // refer to cv::dnn::blobFromImages
-        cv::Mat inputNCHW = blobFromImages(inMatList, 1.0/normalize_factor, true);
+        cv::Mat inputNCHW = blobFromImages(inMatList, normalize_factor/255.0, true);
         int sz[] = { 1, nif, 3, oriHeight, oriWidth };
         cv::Mat inputImg(5, sz, CV_32F, (char *)inputNCHW.data);
         inputDataList.push_back(inputImg.clone());
@@ -353,7 +353,7 @@ int main(int argc, char** argv){
         for (size_t idx = 0; idx < outputDataList.size(); idx++){
             // 5. post process and save outputs
             auto outputImg = outputDataList[idx];
-            outputImg.convertTo(outputImg, CV_8U, normalize_factor);
+            outputImg.convertTo(outputImg, CV_8U, 255.0/normalize_factor);
             int nchwSize[] = {nif, 3, oriHeight * scaleFactor, oriWidth * scaleFactor};
             cv::Mat outputNCHW(4, nchwSize, CV_8U, (void *)outputImg.data);
             std::vector<cv::Mat> outMatList;

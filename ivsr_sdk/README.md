@@ -180,7 +180,7 @@ There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO 
 |save_path|Optional. Path to save predictions.|./outputs|If use the default value, make sure default path exists.|
 |save_predictions|Optional. Whether to save the results to save_path.|false|If this option exists, results will be saved.|
 |scale_factor|Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).|2|For image enhancement model and if no resolution change, please set to 1.|
-|normalize_factor|Optional. Whether to normalize input and output. |255.0|BasicVSR is normalized to 0~1.0, EDSR model does not normalized, so it need to be set to 1.0.|
+|normalize_factor|Optional. Normalization factor is equal to the value range required by models.|1.0|255.0 for Enhanced EDSR, 1.0 for other models.|
 |precision |Required for inference precision setting, but runtime precision you need to check with your HW platform.|f32|f32[FP32], f16[FP16], bf16[bf16].|
 |reshape_values|Optional. Reshape the network to fit the input image size. |None|Set the complete tensor value of the shape. e.g. --reshape_values="(1,3,720,1280)" in case your input image happens to be 1280x720 RGB 24bits|
 
@@ -198,7 +198,7 @@ Please note that all the paths specified by options should exist and do not end 
 ```
 ###  **EDSR Sample**
 ```bash
-./vsr_sample --model_path=[your EDSR model.xml] --data_path=[folder contains low resolution images]  --nig=1 --device=GPU  --normalize_factor=1.0 --precision=f16 #need to set normalize_factor as 1.0
+./vsr_sample --model_path=[your EDSR model.xml] --data_path=[folder contains low resolution images]  --nig=1 --device=GPU  --normalize_factor=255.0 --precision=f16 #need to set normalize_factor as 225.0
 ```
 ### **SVP Sample**
 ```bash

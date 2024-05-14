@@ -15,7 +15,7 @@ cmake -DENABLE_LOG=ON -DENABLE_PERF=ON -DENABLE_TEST=OFF -DCMAKE_BUILD_TYPE=Rele
 # create a temporary folder for output images if not created
 mkdir -p outputs
 # run vsr_sample command
-./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/LR  --nig=1 --device=GPU --save_predictions=true --save_path=./outputs --normalize_factor=1.0
+./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/LR  --nig=1 --device=GPU --save_predictions=true --save_path=./outputs --normalize_factor=255.0
 # rename the output image file
 mv outputs/LR_input.png outputs/LR_output.png
 #md5check
@@ -27,7 +27,7 @@ python check_results.py -i outputs/LR_output.png -o test_images/LR_ref.png
 * model path: ./edsr.xml
 * command line: 
 ```shell
-./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/HR  --nig=1 --device=GPU --save_predictions=true --save_path=./outputs --normalize_factor=1.0
+./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/HR  --nig=1 --device=GPU --save_predictions=true --save_path=./outputs --normalize_factor=255.0
 # rename the output image file
 mv outputs/HR_input.png outputs/HR_output.png
 #md5check
@@ -39,7 +39,7 @@ python check_results.py -i outputs/HR_output.png -o test_images/HR_ref.png
 * model path: ./edsr.xml
 * command line: 
 ```shell
-./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/HR  --nig=1 --device=MULTI:GPU.0,GPU.1 --save_predictions=true --save_path=./outputs --normalize_factor=1.0
+./bin/vsr_sample --model_path=./edsr.xml --data_path=./ivsr_sdk/test_cases/edsr_test/test_images/HR  --nig=1 --device=MULTI:GPU.0,GPU.1 --save_predictions=true --save_path=./outputs --normalize_factor=255.0
 # rename the output image file
 mv outputs/HR_input.png outputs/multigpu_output.png
 #md5check

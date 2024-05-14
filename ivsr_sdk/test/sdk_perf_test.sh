@@ -27,7 +27,7 @@ function perf_test()
     device_name=${d_array[0]}
     resolu=${p_array[7]}
     echo "--------${1}_${device_name}_${3}_${resolu}_${5}.log--------"
-    ./vsr_sample --model_path=/home/media/djx/EDSR-PyTorch/src/ov_22_3_models/edsr.xml --data_path=$4 --nig=$nframe --device=$2  --normalize_factor=1.0 --precision=$3 > ./perf_test_log/${1}_${device_name}_${3}_${resolu}_${5}.log
+    ./vsr_sample --model_path=/home/media/djx/EDSR-PyTorch/src/ov_22_3_models/edsr.xml --data_path=$4 --nig=$nframe --device=$2  --normalize_factor=255.0 --precision=$3 > ./perf_test_log/${1}_${device_name}_${3}_${resolu}_${5}.log
     sleep 5
 
 }
