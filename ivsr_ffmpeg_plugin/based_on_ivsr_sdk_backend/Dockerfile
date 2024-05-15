@@ -43,7 +43,7 @@ LABEL vendor="Intel Corporation"
 
 RUN mkdir -p /workspace/ivsr
 
-ARG ENABLE_GPU_PATCH
+ARG ENABLE_OV_PATCH
 
 # openvino
 RUN apt-get update && \
@@ -96,7 +96,7 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
   cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
 COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
-RUN if [ "$ENABLE_GPU_PATCH" = "true" ]; then \
+RUN if [ "$ENABLE_OV_PATCH" = "true" ]; then \
         apt-get update; \
         xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt; \
         apt-get install -y vainfo clinfo; \
@@ -163,7 +163,7 @@ RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name"
 
 COPY ./ivsr_ov/based_on_openvino_2022.3/patches/*.patch ${IVSR_OV_DIR}/../patches/
-RUN if [ "$ENABLE_GPU_PATCH" = "true" ]; then \
+RUN if [ "$ENABLE_OV_PATCH" = "true" ]; then \
         cd ${IVSR_OV_DIR}; \
         { set -e; \
             for patch_file in $(find ../patches -iname "*.patch" | sort -n); do \
