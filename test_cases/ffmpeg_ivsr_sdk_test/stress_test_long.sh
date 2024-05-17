@@ -3,7 +3,7 @@ MODEL_PATH=/workspace
 BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
-FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
+FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 H=1080
 W=1920
 

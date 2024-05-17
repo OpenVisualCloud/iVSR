@@ -26,4 +26,4 @@ docker build --build-arg http_proxy=$http_proxy \
 	--build-arg PYTHON=python3.10 \
 	--build-arg ENABLE_OV_PATCH=$ENABLE_OV_PATCH \
 	-f Dockerfile -t ffmpeg_ivsr_sdk \
-	../../
+	../

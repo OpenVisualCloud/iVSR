@@ -6,7 +6,7 @@ docker cp 0_iVSR_v0.1_models <container id>:/workspace
 ```
 * Enter ffmpeg ivsr sdk plugin directory
 ```shell
-cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
+cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 ```
 * Generate test videos
 ```shell

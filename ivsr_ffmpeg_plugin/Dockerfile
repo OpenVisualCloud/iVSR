@@ -246,7 +246,7 @@ RUN apt-get update && \
   rm -rf /var/lib/apt/lists/*
 ENV LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
-ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend
+ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin
 ARG FFMPEG_DIR=${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
 
 ARG FFMPEG_REPO=https://github.com/FFmpeg/FFmpeg.git
@@ -254,7 +254,7 @@ ARG FFMPEG_VERSION=n6.1
 RUN git clone ${FFMPEG_REPO} ${FFMPEG_DIR} && \
     cd ${FFMPEG_DIR} && \
     git checkout ${FFMPEG_VERSION}
-COPY ./ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/patches/*.patch ${FFMPEG_DIR}/
+COPY ./ivsr_ffmpeg_plugin/patches/*.patch ${FFMPEG_DIR}/
 RUN cd ${FFMPEG_DIR} && \
   { set -e; \
   for patch_file in $(find -iname "*.patch" | sort -n); do \
