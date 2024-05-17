@@ -52,6 +52,16 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle);
 **Parameters**
 
 - `configs` Configurations to initialize the intel VSR SDK.
+
+|Config name|Description|
+|:--|:--|
+|INPUT_MODEL|Required. Path to the input model file.|
+|TARGET_DEVICE|Required. Device to run the inference.|
+|CUSTOM_LIB|Optional. Path to extension lib file, required for loading Extended BasicVSR model|
+|CLDNN_CONFIG|Optional. Path to custom op xml file, required for loading Extended BasicVSR model|
+|PRECISION|Optional. To set inference precision for hardware|
+|RESHAPE_SETTINGS|Optional. To set reshape setting for the input model|
+|INPUT_RES|Required. To set input frame resolution in format `<width>,<height>`|
 - `handle` A handle for VSR processing. 
 
 **Description**
@@ -171,10 +181,10 @@ There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO 
 |Option name|Desciption|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
 |h|Print Help Message|||
-|cldnn_config|Required. Path of CLDNN config.|None|< Path to OpenVINO >/flow_warp_custom_op/flow_warp.xml|
+|cldnn_config|Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.|None|for Extended BasicVSR, set &lt;Path to OpenVINO&gt;/flow_warp_custom_op/flow_warp.xml|
 |data_path|Required. Input data path for inference.|None||
 |device|Optional. Device to perform inference.|CPU|CPU or GPU or MULTI:GPU.0,GPU.1|
-|extension|Optional. Extension (.so or .dll) path of custom operation.|None|< Path to basicvsr_sample>/lib/libcustom_extension.so|
+|extension|Optional. Extension (.so or .dll) path of custom operation.|None|path to libcustom_extension.so|
 |model_path|Required. Path of VSR OpenVINO IR model (.xml).|None||
 |nig|Optional. Number of input groups for inference.|1||
 |save_path|Optional. Path to save predictions.|./outputs|If use the default value, make sure default path exists.|
@@ -204,21 +214,6 @@ Please note that all the paths specified by options should exist and do not end 
 ```bash
 ./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, add reshape settings if the images are not 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
 ```
-<br />
-
-##  **Test Cases**
-
-
-There are some unit tests for the iVSR API. You can reach the unit tests from "`/workspace/ivsr/ivsr_sdk/bin/vsr_unit_test`". Since model is essential for inference, you need to prepare models (*.bin and *.xml ) to the same path of `vsr_unit_test` and rename the model files to " test_with_custom_op.xml" and " test_with_custom_op.bin".
-
-You can perform unit tests by runing the following command:
-
-```bash
-./vsr_unit_test
-```
-
-Then you can obtain the test results with status <font color="#00dd00">PASSED</font> or <font color="#dd0000">FAILED</font>.
-
 <br />
 
 ## **Set Up**

@@ -20,15 +20,15 @@ const std::string keys =
     "{h                 | | Print Help Message}"
     "{model_path        | | Required. Path to an openvino ir model(.xml).}"
     "{data_path         | | Required. Path to a folder with images for inference.}"
-    "{extension         | | Required for CPU custom layers. Absolute path to a shared library with the kernels implementations. }"
+    "{extension         | | Optional option. Required for CPU custom layers. Absolute path to a shared library with the kernels implementations. }"
     "{device            |CPU| Optional. Specify a target device to infer on, default: CPU. Use MULTI:<comma-separated_devices_list> format to specify MULTI device}"
     "{save_predictions  |false| Optional. Whether to save the infer results to <save_path> or not.}"
     "{save_path         |./outputs| Optional. Path to a folder to save predictions.}"
-    "{cldnn_config      | | Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
+    "{cldnn_config      | | Optional option. Required for GPU custom kernels. Absolute path to an .xml file with the kernels description.}"
     "{nig               |1| Optional. Number of input data groups for inference. }"
     "{normalize_factor  |1.0| Optional. Normalization factor is equal to the value range required by models, default is 1.0. 255.0 for Enhanced EDSR, 1.0 for other models.}"
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
-    "{precision         |f32| Required for inference precision.fp32:f32, fp16:f16, bf16:bf16}"
+    "{precision         |f32| Optional. For inference precision.fp32:f32, fp16:f16, bf16:bf16}"
     "{reshape_values    | | Optional. Reshape network to fit the input image size. e.g. --reshape_values=\"(1,3,720,1280)\"}"
    ;
 

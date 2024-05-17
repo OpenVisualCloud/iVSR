@@ -22,7 +22,11 @@ struct callback_args{
     int flag;
     int nif;
     Time::time_point time;
-    callback_args(){}
+    callback_args() {
+        flag = 0;
+        nif  = 0;
+        time = Time::now();
+    }
     callback_args(int f, int nif, Time::time_point t):flag(f),nif(nif),time(t){}
 };
 
@@ -39,62 +43,71 @@ void completion_callback (void *args)
 
 }
 
+#define COMMON_SETUP                                                   \
+    do {                                                               \
+        config = new ivsr_config_t();                                  \
+        config->key = IVSRConfigKey::INPUT_MODEL;                      \
+        config->value = "./test_with_custom_op.xml";                   \
+        config->next = nullptr;                                        \
+        config_device= new ivsr_config_t();                            \
+        config_device->key = IVSRConfigKey::TARGET_DEVICE;             \
+        config_device->value = "CPU";                                  \
+        config_device->next = nullptr;                                 \
+        config->next = config_device;                                  \
+        config_res= new ivsr_config_t();                               \
+        config_res->key = IVSRConfigKey::INPUT_RES;                    \
+        config_res->value = "1920,1080";                               \
+        config_res->next = nullptr;                                    \
+        config_device->next = config_res;                              \
+    } while (0)                                                        \
+
+#define COMMON_UNINIT                                                  \
+    do {                                                               \
+        if (config) delete config;                                     \
+        if (config_device) delete config_device;                       \
+        if (config_res) delete config_res;                             \
+    } while (0)                                                        \
+
 TEST(VSR_Unit_Test, ValidInputTestForInit_CPU_withCustom)
 {
-    ivsr_config_t *config = new ivsr_config_t();
     ivsr_handle handle = nullptr;
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr;
-    std::string model_path = "./test_with_custom_op.xml";
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "CPU";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
-
-    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    ivsr_config_t *config_customlib = nullptr;
+    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = extension.c_str();
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
     auto res = ivsr_init(config, &handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_CPU_withCustom test failed-init";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_CPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_CPU_withCustom test failed-deinit";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_CPU_withCustom test failed-deinit";
+    if (config_customlib) free(config_customlib);
+    COMMON_UNINIT;
     handle = nullptr;
 }
 
 TEST(VSR_Unit_Test, ValidInputTestForInit_GPU_withCustom)
 {
-    ivsr_config_t *config = new ivsr_config_t();
     ivsr_handle handle = nullptr;
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr;
-    std::string model_path = "./test_with_custom_op.xml";
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "GPU";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
+    ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
+    config_device->value = "GPU";
 
-    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = extension.c_str();
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
@@ -102,37 +115,32 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_GPU_withCustom)
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_GPU_withCustom test failed-init";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_GPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_GPU_withCustom test failed-deinit";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_GPU_withCustom test failed-deinit";
+    if (config_customlib) free(config_customlib);
+    if (config_cldnn)     free(config_cldnn);
+    COMMON_UNINIT;
     handle = nullptr;
 }
 
 TEST(VSR_Unit_Test, ValidInputTestForInit_MultiGPU_withCustom)
 {
-    ivsr_config_t *config = new ivsr_config_t();
     ivsr_handle handle = nullptr;
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr;
-    std::string model_path = "./test_with_custom_op.xml";
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "MULTI:GPU.0,GPU.1";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
+    ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
+    config_device->value = "MULTI:GPU.0,GPU.1";
 
-    std::string extension = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = extension.c_str();
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
@@ -140,39 +148,32 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_MultiGPU_withCustom)
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-init";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
-    EXPECT_EQ(0, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-deinit";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-deinit";
+    if (config_customlib) free(config_customlib);
+    if (config_cldnn)     free(config_cldnn);
+    COMMON_UNINIT;
     handle = nullptr;
 }
 
 
 TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
 {
-    // ivsr init
-    ivsr_config_t *config = new ivsr_config_t();
-    ivsr_handle handle = nullptr; 
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr;
-    std::string model_path = "./test_with_custom_op.xml"; 
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_handle handle = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "CPU";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
-
-    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    ivsr_config_t *config_customlib = nullptr;
+    std::string custom_lib = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
     config_customlib->next = nullptr;
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
     auto res = ivsr_init(config, &handle);
+    assert(res == IVSRStatus::OK);
 
     // ivsr process input and output
     int input_size[] = { 1, 3, 3, 1080, 1920 };
@@ -197,7 +198,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     count = 0;
 
     res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
-    EXPECT_EQ(0, res) << "ValidInputTestForProcess_CPU_withCustom test failed";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForProcess_CPU_withCustom test failed";
     
     while (count != 1) {
         usleep(100);
@@ -207,36 +208,28 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
+    if (config_customlib) free(config_customlib);
+    COMMON_UNINIT;
     handle = nullptr;
-
 }
 
 TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
 {
-    // ivsr init
-    ivsr_config_t *config = new ivsr_config_t();
-    ivsr_handle handle = nullptr; 
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr;
-    std::string model_path = "./test_with_custom_op.xml"; // need valid model path!!!
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_handle handle = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "GPU";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
+    ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
+    config_device->value = "GPU";
 
-    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string custom_lib = "./libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
     config_customlib->next = nullptr;
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
     config_cldnn->value = cldnn_config.c_str();
@@ -244,6 +237,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
+    assert(res == IVSRStatus::OK);
 
     // ivsr process input and output
     int input_size[] = { 1, 3, 3, 1080, 1920 };
@@ -268,7 +262,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     count = 0;
 
     res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
-    EXPECT_EQ(0, res) << "ValidInputTestForProcess_GPU_withCustom test failed";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForProcess_GPU_withCustom test failed";
     
     //wait for the completion callback
     while (count != 1) {
@@ -278,35 +272,29 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
+    if (config_customlib) free(config_customlib);
+    if (config_cldnn)     free(config_cldnn);
+    COMMON_UNINIT;
     handle = nullptr;
 }
 
 TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
 {
-    // ivsr init
-    ivsr_config_t *config = new ivsr_config_t();
-    ivsr_handle handle = nullptr; 
-    ivsr_config_t *config_device = nullptr, *config_customlib = nullptr, *config_cldnn = nullptr;
-    std::string model_path = "./test_with_custom_op.xml"; 
-    config->key = IVSRConfigKey::INPUT_MODEL;
-    config->value = model_path.c_str();
-    config->next = nullptr;
+    ivsr_handle handle = nullptr;
+    ivsr_config_t *config = nullptr, *config_device = nullptr, *config_res = nullptr;
+    COMMON_SETUP;
 
-    std::string device = "MULTI:GPU.0,GPU.1";
-    config_device= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
-    config_device->key = IVSRConfigKey::TARGET_DEVICE;
-    config_device->value = device.c_str();
-    config_device->next = nullptr;
-    config->next = config_device;
+    ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
+    config_device->value = "MULTI:GPU.0,GPU.1";
 
-    std::string custom_lib = "../../ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so";
+    std::string custom_lib = "./libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
     config_customlib->value = custom_lib.c_str();
     config_customlib->next = nullptr;
-    config_device->next = config_customlib;
+    config_res->next = config_customlib;
 
-    std::string cldnn_config = "../../ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml";
+    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
     config_cldnn->value = cldnn_config.c_str();
@@ -314,6 +302,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
+    assert(res == IVSRStatus::OK);
 
     // ivsr process input and output
     int input_size[] = { 1, 3, 3, 1080, 1920 };
@@ -338,7 +327,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     count = 0;
 
     res = ivsr_process(handle, (char*)input_buffer, (char*)output_buffer, &cb);
-    EXPECT_EQ(0, res) << "ValidInputTestForProcess_MultiGPU_withCustom test failed";
+    EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForProcess_MultiGPU_withCustom test failed";
     
     while (count != 1) {
         usleep(100);
@@ -348,6 +337,9 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
+    if (config_customlib) free(config_customlib);
+    if (config_cldnn)     free(config_cldnn);
+    COMMON_UNINIT;
     handle = nullptr;
 }
 

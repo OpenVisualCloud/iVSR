@@ -52,15 +52,15 @@ typedef enum {
  * 
  */
 typedef enum {
-    INPUT_MODEL      = 0x1,
-    TARGET_DEVICE    = 0x2,
-    BATCH_NUM        = 0x3,
-    VERBOSE_LEVEL    = 0x4,
-    CUSTOM_LIB       = 0x5,
-    CLDNN_CONFIG     = 0x6,
-    NUM_IFER_REQUEST = 0x7,
-    PRECISION        = 0x8,
-    RESHAPE_SETTINGS = 0x9,
+    INPUT_MODEL      = 0x1, //!< Required, Path to the input model file>
+    TARGET_DEVICE    = 0x2, //!< Required, device to run the inference>
+    BATCH_NUM        = 0x3, //!< Not Enabled Yet>
+    VERBOSE_LEVEL    = 0x4, //!< Not Enabled Yet>
+    CUSTOM_LIB       = 0x5, //!< Path to extension lib file, required for loading Extended BasicVSR model>
+    CLDNN_CONFIG     = 0x6, //!< Path to custom op xml file, required for loading Extended BasicVSR model>
+    NUM_IFER_REQUEST = 0x7, //!< Not Enabled Yet>
+    PRECISION        = 0x8, //!< Optional. To set inference precision for hardware>
+    RESHAPE_SETTINGS = 0x9, //!< Optional. To set reshape setting for the input model>
     INPUT_RES        = 0xA, //!< Required, to specify the input frame resolution>
 }IVSRConfigKey;
 
