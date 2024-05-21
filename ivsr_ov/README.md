@@ -1,4 +1,4 @@
-# iVSR GPU Opt
+# OpenVINO Opt
 In this folder, optimization patches are provided to run the inference of Enhanced BasicVSR on Intel CPU and
 Intel Data Center GPU Flex 170 (*aka* ATS-M1 150W)
 with OpenVINO. 

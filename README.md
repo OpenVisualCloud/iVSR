@@ -44,6 +44,10 @@ For the details of public EDSR, please check the [paper](https://arxiv.org/pdf/1
 
 We have enhanced the public EDSR model to reduce the computational complexity by over 79% compared to Enhanced BasicVSR, while achieving similar visual quality.
 
+#### `TSENet`
+TSENet is one multi-frame SR algorithm derived from [ETDS](https://github.com/ECNUSR/ETDS).
+It provides pre-view version of feature to support this model in the SDK and its plugin. Please ping Intel representative to get the model package.
+
 ## Smart Video Processing (SVP)
 `SVP` is an AI-based video prefilter that enhances the perceptual rate-distortion in video encoding. 
 With SVP, the encoded video streams achieve reduced bandwidth while maintaining the same visual quality, 

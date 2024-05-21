@@ -176,6 +176,14 @@ function_test()
         format=yuv420p
         resolution_list=("${resolutions_all[@]}")
         ;;
+    TSENET)
+        model=${CUSTOMER_PATH}/ETDS_tempOnC_M7C48_x2_t3_h1080_w1920_fp16.xml
+        model_num=4
+        nif=1
+        normalize_factor=1.0
+        format=bgr24
+        resolution_list=("${resolutions_all[@]}")
+        ;;
     *)
         echo "Unknown model name: $value"
         ;;
@@ -187,7 +195,7 @@ function_test()
         test_video_name=test_video_${width}x${height}_fn30.mp4
         out_video_name=output_fn30_${model_name}_${device}_${model_type}_${width}x${height}.yuv
         command="./ffmpeg -i ${test_video_name} -pix_fmt yuv420p -y
-                -vf format=${format},dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=${nif}:backend_configs='nireq=1&device=${device}${rest_param}model_type=${model_num}&normalize_factor=${normalize_factor}' ${out_video_name}"
+                -vf format=${format},dnn_processing=dnn_backend=ivsr:model=${model}:input=input:output=output:nif=${nif}:backend_configs='device=${device}${rest_param}model_type=${model_num}&normalize_factor=${normalize_factor}' ${out_video_name}"
         start_time=`date +%s`
         detail_log_dir=${LOG_DIR}/function_test_${model_name}_${device}_${model_type}_${width}x${height}.log
         ${command} > ${detail_log_dir} 2>&1
@@ -251,6 +259,7 @@ run()
     function_test EDSR fp32 CPU
     function_test EDSR fp32 GPU
     function_test CUSTOMER fp32 CPU
+    #function_test TSENET fp32 CPU
     delete_testvideo
     echo "Finish Function Test"
 

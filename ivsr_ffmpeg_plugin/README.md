@@ -1,6 +1,6 @@
 # iVSR FFmpeg plugin - iVSR SDK based
 The folder `ivsr_ffmpeg_plugin` enables BasicVSR inference using FFmpeg with iVSR SDK as backend. 
-The inference is validated with OpenVINO 2023.1 and FFmpeg 5.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline. The folder patches includes our patches for FFmpeg.
+The inference is validated with OpenVINO 2022.3 and FFmpeg 6.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline. The folder patches includes our patches for FFmpeg.
 
 <div align=center>
 <img src="./figs/ffmpeg_ivsr_sdk_backend.png" width = 80% height = 80% />
@@ -62,22 +62,27 @@ ldconfig
 - Use FFmpeg-plugin to run BasicVSR inference, needs to set extension and op_xml options to run BasicVSR model
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='nireq=1&device=CPU&extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='device=CPU&extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
 ```
 - Use FFmpeg-plugin to run SVP inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=1' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='device=CPU&model_type=1' test_out.mp4
 ```
 - Use FFmpeg-plugin to run EDSR inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
+```
+- Use FFmpeg-plugin to run TSENet model
+```
+cd /workspace/ivsr/ivsr_ffmpeg_plugin/based_on_ivsr_sdk_backend/ffmpeg
+./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<tsenet_model.xml>:input=input:output=output:nif=1:backend_configs='device=CPU&model_type=4' test_out.mp4
 ```
 
 - Work modes of FFmpeg-plugin
 
-Decoder and encoder work similar to FFmpeg 5.1. Options and command line formats are not changed.
+Decoder and encoder work similar to FFmpeg. Options and command line formats are not changed.
 Only the options of video filter `dnn_processing` are introduced.
 
 |AVOption name|Description|Default value|Recommended value(s)|
@@ -86,18 +91,16 @@ Only the options of video filter `dnn_processing` are introduced.
 |model|path to model file|NULL|Available full path of the released model files|
 |input|input name of the model|NULL|input|
 |output|output name of the model|NULL|output|
-|backend_configs:nireq|number of inference request|2|1 or 2 or 4|
 |backend_configs:device|device for inference task|CPU|CPU or GPU|
-|backend_configs:model_type|type for models|0|0 for BasicVSR, 1 for SVP, 2 for EDSR|
-|backend_configs:normalize_factor|factor for normalization|1.0|1.0 for BasicVSR and SVP, 255.0 for EDSR|
-|backend_configs:extension|extension lib file full path, required for loading BasicVSR model|
-|backend_configs:op_xml|custom op xml file full path, required for loading BasicVSR model|
+|backend_configs:model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for CUSTOM VSR, 4 for TSENet|
+|backend_configs:normalize_factor|factor for normalization|1.0|255.0 for Enhanced EDSR, 1.0 for other models supported in current version|
+|backend_configs:extension|extension lib file full path, required for loading Enhanced BasicVSR model|
+|backend_configs:op_xml|custom op xml file full path, required for loading Enhanced BasicVSR model|
+|nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR, 1 for other models supported in current version|
 
-Apart from the common AVOptions which can be set in the normal FFmpeg command line with format `AVOption=value`, there are two options `nireq` and `device` to be set with the `backend_configs` option. The command format is `backend_configs='nireq=value&device=value'` when you want to set both of them.
+Apart from the common AVOptions which can be set in the normal FFmpeg command line with format `AVOption=value`, there are several other options `device`, `model_type`, and `normalize_factor` to be set with the `backend_configs` option. The command format is `backend_configs='device=value:model_type=value:normalize_factor=value'` when you want to set them.
 
-- Inference model precision and custom operation supportive 
+- OpenVINO custom operations support for Enhanced BasicVSR model
 
-OpenVINO models with different precisions can be supported by the FFmpeg-plugin. In this release, we have validated FP32 and INT8 models which are converted and quantized by the model optimizer of OpenVINO 2022.3.
-
-The [Custom OpenVINO™ Operations](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_add_openvino_ops.html) is a great feature of OpenVINO which allows users to support models with operations that OpenVINO does not support out-of-the-box. 
-This FFmpeg-plugin supports BasicVSR which utilizes custom operations. It requires to set extension and op_xml options in command line to run BasicVSR model. The extension lib file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so` and the op xml file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml`. And please note that the libcustom_extension.so and flow_warp.xml are generated during the build of OpenVINO after apply OpenVINO's patches.
+The [Custom OpenVINO™ Operations](https://docs.openvino.ai/latest/openvino_docs_Extensibility_UG_add_openvino_ops.html) is a great feature of OpenVINO which allows users to support models with custom operations that OpenVINO does not support out-of-the-box.
+This FFmpeg-plugin supports Enhanced BasicVSR model which utilizes custom operations. It requires to set extension and op_xml options (with `backend_configs`) in command line to run Enhanced BasicVSR model. The extension lib file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so` and the op xml file is located in docker container folder `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml`. And please note that the libcustom_extension.so and flow_warp.xml are generated during the build of OpenVINO after apply OpenVINO's patches.

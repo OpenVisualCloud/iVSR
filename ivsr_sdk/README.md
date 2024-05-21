@@ -214,6 +214,8 @@ Please note that all the paths specified by options should exist and do not end 
 ```bash
 ./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, add reshape settings if the images are not 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
 ```
+
+No other models are supported with current version of VSR Sample.
 <br />
 
 ## **Set Up**
