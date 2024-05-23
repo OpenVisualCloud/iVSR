@@ -50,17 +50,17 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle);
 ```
 **Parameters**
 
-- `configs` Configurations to initialize the intel VSR SDK.
+- `configs` Configurations to initialize the intel VSR SDK. Including the following configurations:
 
-|Config name|Description|
-|:--|:--|
-|INPUT_MODEL|Required. Path to the input model file.|
-|TARGET_DEVICE|Required. Device to run the inference.|
-|CUSTOM_LIB|Optional. Path to extension lib file, required for loading Extended BasicVSR model|
-|CLDNN_CONFIG|Optional. Path to custom op xml file, required for loading Extended BasicVSR model|
-|PRECISION|Optional. To set inference precision for hardware|
-|RESHAPE_SETTINGS|Optional. To set reshape setting for the input model|
-|INPUT_RES|Required. To set input frame resolution in format `<width>,<height>`|
+    |Config name|Description|
+    |:--|:--|
+    |INPUT_MODEL|Required. Path to the input model file.|
+    |TARGET_DEVICE|Required. Device to run the inference.|
+    |CUSTOM_LIB|Optional. Path to extension lib file, required for loading Extended BasicVSR model|
+    |CLDNN_CONFIG|Optional. Path to custom op xml file, required for loading Extended BasicVSR model|
+    |PRECISION|Optional. To set inference precision for hardware|
+    |RESHAPE_SETTINGS|Optional. To set reshape setting for the input model|
+    |INPUT_RES|Required. To set input frame resolution in format `<width>,<height>`|
 - `handle` A handle for VSR processing. 
 
 **Description**
@@ -69,8 +69,16 @@ The method creates an iVSR handle to prepare VSR environment according to the co
 
 **Return Values**
 
- `IVSRStatus`	Return a status to indicate whether the initialization is successful or not.
-
+ `IVSRStatus`	Return a status to indicate whether the initialization is successful or not. IVSRStatus is the enumeration type of return value for all iVSR APIs.
+|Status name|Description|
+|:--|:--|
+|OK|Success.|
+|GENERAL_ERROR|Get nullptr or return fail in functions.|
+|UNKNOWN_ERROR|Unknown error|
+|UNSUPPORTED_KEY|Unsupported key|
+|UNSUPPORTED_CONFIG|Unsupported config value|
+|EXCEPTION_ERROR|Catch a exception|
+|UNSUPPORTED_SHAPE|Unsupported model shape|
 
 #### **ivsr_process**
 
@@ -85,8 +93,8 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 **Parameters**
 
 - `handle` A handle for VSR processing. 
-- `input_data` Input data address for a VSR task.
-- `output_data` Output data address for the VSR task output.
+- `input_data` Input data address for a VSR task, which points to the contents of input data obtained by user input.
+- `output_data` Output data address for the VSR task output, which points to the output data buffer allocated according to model output shape.
 - `cb` A callback function for user to know something about the VSR task, e.g. indicating whether the VSR task has completed.
 
 **Description**
@@ -136,6 +144,14 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value);
 
 - `handle` A handle for VSR processing.  
 - `key` Name of a attribute/property.
+    |Key name|Description|
+    |:--|:--|
+    |IVSR_VERSION|Use this key to get ivsr version.|
+    |INPUT_TENSOR_DESC|Use this key to get model input shape.|
+    |OUTPUT_TENSOR_DESC|Use this key to get model output shape.|
+    |NUM_INPUT_FRAMES|Use this key to get input frames number of the model.|
+    |INPUT_DIMS|Use this key to get input dims of the model.|
+    |OUTPUT_DIMS|Use this key to get input dims of the model.|
 - `value` Value of the attribute got by key.
 
 **Description**

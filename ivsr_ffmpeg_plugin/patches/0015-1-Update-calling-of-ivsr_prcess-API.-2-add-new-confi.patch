@@ -1,8 +1,8 @@
 From 6498c87ed346d22728a0298e061d818d88821e43 Mon Sep 17 00:00:00 2001
 From: Jerry Dong <jerry.dong@intel.com>
 Date: Mon, 22 Apr 2024 11:18:33 +0800
-Subject: [PATCH] 1)Update calling of ivsr_prcess API. 2)add new config
- INPUT_DATA_SHAPE
+Subject: [PATCH] 1)Update calling of ivsr_process API. 2)add new config
+ INPUT_RES
 
 ---
  libavfilter/dnn/dnn_backend_ivsr.c | 52 +++++++++++++++---------------
