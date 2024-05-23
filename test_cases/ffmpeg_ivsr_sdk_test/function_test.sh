@@ -164,7 +164,7 @@ function_test()
         model=${EDSR_PATH}/edsr.xml
         model_num=2
         nif=1
-        normalize_factor=225.0
+        normalize_factor=255.0
         format=bgr24
         resolution_list=("${resolutions_all[@]}")
         ;;
