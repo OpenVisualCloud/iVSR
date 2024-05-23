@@ -1,6 +1,6 @@
 # Environment Set Up
 
-This document introduces how to set up the environment to build and use the [Intel Video Super Resolution Development Kit](./Introduction.md).
+This document introduces how to set up the environment to build and use the [Intel Video Super Resolution Development Kit](./README.md).
 
 ## Prerequisites
 

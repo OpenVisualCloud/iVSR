@@ -89,7 +89,7 @@ void fill_image(std::vector<std::vector<int>> patchCorners, char* imgBuf, \
     int img_sB = iN * iC * iH * iW;
     
     size_t outputpixels = iB * iN * iC * iH * iW;
-    int * pixelCounter = new int[outputpixels];
+    int * pixelCounter = new int[outputpixels]();
 
     float * img_ptr =(float *)imgBuf;
 
@@ -131,6 +131,7 @@ void fill_image(std::vector<std::vector<int>> patchCorners, char* imgBuf, \
         *(img_ptr + id) /= *(pixelCounter + id);
     }
 
+    delete[] pixelCounter;
 }
 
 SmartPatch::SmartPatch(PatchConfig config, char* inBuf, char* outBuf, std::vector<int> inputShape, bool flag)
@@ -247,7 +248,7 @@ IBasicVSRStatus SmartPatch::generatePatch(){
 #else
     float* patchBuf = _patchInputPtr;
     std::vector<std::vector<int>> patchCoorList = calculatePatchCoordinateList(inputHeight, inputWidth, patchSize, blockSize);
-    for (auto patchCorners: patchCoorList){
+    for (auto& patchCorners: patchCoorList){
         _patchInputPtrList.push_back((char*)patchBuf);
         auto patchPtr = fill_patch(patchCorners,(float*)_inputPtr, inputDims, patchBuf);
         patchBuf = patchPtr;
@@ -269,7 +270,7 @@ IBasicVSRStatus SmartPatch::generatePatch(){
 #else
     int outBlockSize[] = {ceil(inferOutHeight*1.0/patchOutHeight), ceil(inferOutWidth*1.0/patchOutWidth)};
     std::vector<std::vector<int>> outPatchCoorList = calculatePatchCoordinateList(inferOutHeight, inferOutWidth, outPatchSize, outBlockSize);
-    for (auto patchCorners: outPatchCoorList){
+    for (auto& patchCorners: outPatchCoorList){
         _patchOutputPtrList.push_back((char*)outPatchBuf);
         auto patchPtr = fill_patch(patchCorners,_patchOutputPtr, outputDims, outPatchBuf);
         outPatchBuf = patchPtr;
@@ -338,15 +339,15 @@ std::vector<char*> SmartPatch::getOutputPatches(){
 
 SmartPatch::~SmartPatch(){
     if(_patchInputPtr != nullptr){
-        delete _patchInputPtr;
+        delete[] _patchInputPtr;
         _patchInputPtr = nullptr;
     }
     if(_patchOutputPtr != nullptr){
-        delete _patchOutputPtr;
+        delete[] _patchOutputPtr;
         _patchOutputPtr = nullptr;
     }
     if(_outputPixelCount != nullptr){
-        delete _outputPixelCount;
+        delete[] _outputPixelCount;
         _outputPixelCount = nullptr;
     }
  }

@@ -1,6 +1,6 @@
 # iVSR FFmpeg plugin - iVSR SDK based
-The folder `ivsr_ffmpeg_plugin` enables BasicVSR inference using FFmpeg with iVSR SDK as backend. 
-The inference is validated with OpenVINO 2022.3 and FFmpeg 6.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline. The folder patches includes our patches for FFmpeg.
+The folder `ivsr_ffmpeg_plugin` enables model inference using FFmpeg with iVSR SDK as backend.
+The inference is validated with OpenVINO 2022.3/2023.2 and FFmpeg 6.1. We've implemented some patches on the OpenVINO and FFmpeg to enable the pipeline. The folder patches includes our patches for FFmpeg.
 
 <div align=center>
 <img src="./figs/ffmpeg_ivsr_sdk_backend.png" width = 80% height = 80% />
@@ -11,7 +11,7 @@ The inference is validated with OpenVINO 2022.3 and FFmpeg 6.1. We've implemente
 - Intel Data Center GPU Flex 170(*aka* ATS-M1 150W)
 - Host OS: Linux based OS (Ubuntu 22.04)
 - Docker OS: Ubuntu 22.04
-- kernel: 5.17.0-1031-oem (Optional to enable Intel® Data Center GPU Flex Series accelerator)
+- kernel: 5.17.0-1031-oem (Optional, only required to enable Intel® Data Center GPU Flex Series accelerator)
 - cmake
 - make
 - git
@@ -59,17 +59,17 @@ source /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/install/setupva
 ldconfig
 ```
 ## How to run inference with FFmpeg-plugin
-- Use FFmpeg-plugin to run BasicVSR inference, needs to set extension and op_xml options to run BasicVSR model
+- Use FFmpeg-plugin to run Enhanced BasicVSR inference, needs to set extension and op_xml options to run Enhanced BasicVSR model
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='device=CPU&extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
 ```
-- Use FFmpeg-plugin to run SVP inference
+- Use FFmpeg-plugin to run SVP models inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='device=CPU&model_type=1' test_out.mp4
 ```
-- Use FFmpeg-plugin to run EDSR inference
+- Use FFmpeg-plugin to run Enhanced EDSR inference
 ```
 cd /workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='device=GPU&model_type=2&normalize_factor=255.0' test_out.mp4
@@ -92,7 +92,7 @@ Only the options of video filter `dnn_processing` are introduced.
 |input|input name of the model|NULL|input|
 |output|output name of the model|NULL|output|
 |backend_configs:device|device for inference task|CPU|CPU or GPU|
-|backend_configs:model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for CUSTOM VSR, 4 for TSENet|
+|backend_configs:model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for one CUSTOM VSR, 4 for TSENet|
 |backend_configs:normalize_factor|factor for normalization|1.0|255.0 for Enhanced EDSR, 1.0 for other models supported in current version|
 |backend_configs:extension|extension lib file full path, required for loading Enhanced BasicVSR model|
 |backend_configs:op_xml|custom op xml file full path, required for loading Enhanced BasicVSR model|

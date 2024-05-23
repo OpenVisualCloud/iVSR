@@ -8,7 +8,7 @@ while [ $# -gt 0 ]; do
         --enable_ov_patch)
 			shift
 			value=$(echo $1 | tr '[:upper:]' '[:lower:]')
-            if [ "$value" == "false" ]; then
+            if [ "$value" = "false" ]; then
 				ENABLE_OV_PATCH=$value
 			fi
             shift

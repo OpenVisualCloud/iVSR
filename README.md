@@ -28,7 +28,7 @@ Inference can be run on both Intel CPU and Intel GPUs (including Flex170, Arc770
 
 Video super resolution (VSR) is widely used in AI media enhancement domain to 
 convert low-resolution video to high-resolution.
-iVSR provides two SR algorithms: Enhanced BasicVSR and Enhanced EDSR.
+iVSR supports Enhanced BasicVSR, Enhanced EDSR, TSENet, and can also be updated to support other models.
 
 #### `Enhanced BasicVSR`
 BasicVSR is a public AI-based VSR algorithm. 
@@ -46,6 +46,7 @@ We have enhanced the public EDSR model to reduce the computational complexity by
 
 #### `TSENet`
 TSENet is one multi-frame SR algorithm derived from [ETDS](https://github.com/ECNUSR/ETDS).
+
 It provides pre-view version of feature to support this model in the SDK and its plugin. Please ping Intel representative to get the model package.
 
 ## Smart Video Processing (SVP)
@@ -55,16 +56,13 @@ as measured by common video quality metrics (such as VMAF and (MS-)SSIM) and hum
 
 # How to use iVSR
 
-There three ways to run the above AI media processing.
+There are three ways to run the above AI media processing.
 Please expect `pre-production` quality of current solution.
 
-### 1. Run with iVSR SDK
+### 1. Run with iVSR SDK sample
 Refer to the guide [here](ivsr_sdk/README.md).
 
-### 2. Run with OpenVINO
-Refer to the guide [here](ivsr_ov/README.md).
-
-### 3. Run with FFmpeg
+### 2. Run with FFmpeg
 Refer to the guide [here](ivsr_ffmpeg_plugin/README.md).
 
 Please [contact us](mailto:beryl.xu@intel.com) to get the models.

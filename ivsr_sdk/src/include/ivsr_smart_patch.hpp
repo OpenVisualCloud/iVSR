@@ -46,6 +46,8 @@ public:
     void setInput(char* inBuf){_inputPtr = inBuf;}
     void setOutput(char* outBuf){_outputPtr = outBuf;}
     char* getOutput(){return _outputPtr;}
+    SmartPatch(const SmartPatch&) = delete;
+    SmartPatch& operator=(const SmartPatch&) = delete;
     ~SmartPatch();
 private:
     char* _inputPtr = nullptr; // inference input buffer ptr

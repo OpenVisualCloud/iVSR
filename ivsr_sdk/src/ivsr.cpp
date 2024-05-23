@@ -81,25 +81,32 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
     //std::string infer_precision = "f16"; // set infer precision to f32
     for (auto& d : devices) {
         auto& device_config = config[d];
-        // set throughput streams and infer precision for hardwares
-        if (d == "MULTI" || d == "AUTO") {
-            for(auto hd : hardware_devices){
-                // construct device_config[hd] map and insert first property
-                device_config.insert(ov::device::properties(hd, ov::num_streams(nstream)));
-                // insert second property in device_config[hd]
-                auto& property = device_config[hd].as<ov::AnyMap>();
-                property.emplace(ov::hint::inference_precision(infer_precision));
+        try {
+            // set throughput streams and infer precision for hardwares
+            if (d == "MULTI" || d == "AUTO") {
+                for(auto& hd : hardware_devices){
+                    // construct device_config[hd] map and insert first property
+                    device_config.insert(ov::device::properties(hd, ov::num_streams(nstream)));
+                    // insert second property in device_config[hd]
+                    auto& property = device_config[hd].as<ov::AnyMap>();
+                    property.emplace(ov::hint::inference_precision(infer_precision));
+                }
             }
+            else if(d.find("GPU") != std::string::npos){ // GPU
+                device_config.emplace(ov::num_streams(nstream));
+                device_config.emplace(ov::hint::inference_precision(infer_precision));
+            }
+            else{ // CPU
+                // insert inference precision to map device_config
+                device_config.emplace(ov::hint::inference_precision(infer_precision));
+            }
+        } catch (const ov::AssertFailure& e) {
+            std::cerr << "Caught an ov::AssertFailure exception: " << e.what() << std::endl;
+            return;
+        } catch (...) {
+            std::cerr << "Caught an unknown exception" << std::endl;
+            return;
         }
-        else if(d.find("GPU") != std::string::npos){ // GPU
-            device_config.emplace(ov::num_streams(nstream));
-            device_config.emplace(ov::hint::inference_precision(infer_precision));
-        }
-        else{ // CPU
-            // insert inference precision to map device_config
-            device_config.emplace(ov::hint::inference_precision(infer_precision));
-        }
-
     }
 }
 
@@ -340,6 +347,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
         // -prepare data
         auto res = smartPatch->generatePatch();
         if(res == -1){
+            delete smartPatch;
             ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in Smart Patch");
             return IVSRStatus::UNKNOWN_ERROR;
         }

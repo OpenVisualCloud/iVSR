@@ -1,8 +1,7 @@
 # Intel Video Super Resolution Development Kit
 
 
-Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK 
-which can incorporate all kinds of AI media processing algorithms.
+Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK which is designed to support all kinds of AI media processing algorithms.
 
 The SDK Core consists of two parts, one is the patch solution part, the other is the task scheduler part. 
 1. The patch solution part will split the frames into small patches, then the small patch will be wrapped as one inference task and put it in the task queue in the scheduler module. In addition, each small patch will have a flag to indicate which platform will be used for inference.
@@ -32,7 +31,7 @@ Please refer to [Detailed Description](#detailed-description) for more informati
 |:--|:--|
 |[ivsr_init](#ivsr_init)|Initialize the iVSR environment.|
 |[ivsr_process](#ivsr_process)|Perform a VSR task.|
-|[ivsr_reconfig](#ivsr_reconfig)|Reset and re-config iVSR environment.|
+|[ivsr_reconfig](#ivsr_reconfig)|Reset and re-config iVSR environment. THIS API IS NOT WELL IMPLEMENTED YET.|
 |[ivsr_get_attr](#ivsr_get_attr)|Get the iVSR properties/attributes.|
 |[ivsr_deinit](#ivsr_deinit)|De-initialize the resources allocated for the iVSR environment.|
 
@@ -145,7 +144,7 @@ This method is used to get the properties/attributes of the VSR environment that
 
 **Return Values**
 
-`IVSRStatus`	Return the a status to indicate whether the attribute is got successfully.
+`IVSRStatus`	Return a status to indicate whether the attribute is gotten successfully.
 
 
 #### **ivsr_deinit**
@@ -169,7 +168,7 @@ The method deinitializes the handle and releases the resources allocated for iVS
 
 **Return Values**
 
-`IVSRStatus`	Return the a status to indicate whether VSR deinitialization is successful.
+`IVSRStatus`	Return a status to indicate whether VSR deinitialization is successful.
 
 <br />
 
@@ -196,7 +195,7 @@ There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO 
 
 Please note that all the paths specified by options should exist and do not end up with '/'. Here are some examples to run BasicVSR/EDSR/SVP inference on different devices:
 
-###  **BasicVSR Sample**
+###  **Enhanced BasicVSR model Sample**
 
 ```bash
 # BasicVSR sample on CPU
@@ -206,13 +205,13 @@ Please note that all the paths specified by options should exist and do not end 
 # BasicVSR sample on Multiple-GPUs
 ./vsr_sample --model_path=[your BasicVSR model.xml] --data_path=[folder contains low resolution images] --extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=MULTI:GPU.0,GPU.1
 ```
-###  **EDSR Sample**
+###  **Enhanced EDSR model Sample**
 ```bash
 ./vsr_sample --model_path=[your EDSR model.xml] --data_path=[folder contains low resolution images]  --nig=1 --device=GPU  --normalize_factor=255.0 --precision=f16 #need to set normalize_factor as 225.0
 ```
-### **SVP Sample**
+### **SVP models Sample**
 ```bash
-./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images, add reshape settings if the images are not 1920x1088 RGB 24bit format]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
+./vsr_sample --model_path=[your SVP model.xml]--data_path=[folder contains input images]  --nig=1 --device=GPU --scale_factor=1 #need to set scale_factor as 1
 ```
 
 No other models are supported with current version of VSR Sample.

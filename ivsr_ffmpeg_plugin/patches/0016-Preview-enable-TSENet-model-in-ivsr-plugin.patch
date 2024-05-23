@@ -4,12 +4,12 @@ Date: Fri, 19 Apr 2024 19:11:33 +0800
 Subject: [PATCH] Preview: enable TSENet model in ivsr plugin.
 
 ---
- libavfilter/dnn/dnn_backend_ivsr.c | 155 ++++++++++++++++++++++++++---
+ libavfilter/dnn/dnn_backend_ivsr.c | 153 ++++++++++++++++++++++++++---
  libavfilter/vf_dnn_processing.c    |   2 +-
- 2 files changed, 142 insertions(+), 15 deletions(-)
+ 2 files changed, 141 insertions(+), 14 deletions(-)
 
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
-index 883b06dae1..879ca29499 100644
+index 883b06dae1..6f2bc198e2 100644
 --- a/libavfilter/dnn/dnn_backend_ivsr.c
 +++ b/libavfilter/dnn/dnn_backend_ivsr.c
 @@ -25,6 +25,7 @@
@@ -85,7 +85,7 @@ index 883b06dae1..879ca29499 100644
      default:
          av_log(ctx, AV_LOG_ERROR, "Not supported model type\n");
          return DNN_GENERIC_ERROR;
-@@ -171,13 +187,13 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
+@@ -171,12 +187,12 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
  
  
      for (int i = 0; i < ctx->options.batch_size; ++i) {
@@ -93,16 +93,14 @@ index 883b06dae1..879ca29499 100644
 +        //INFO: for TSENET, lltask_queue contains (N-1)th and (N)th frames
 +        //so peek (N)th frame.
 +        lltask = ff_queue_peek_back(ivsr_model->lltask_queue);
-+        task = lltask->task;
          if (!lltask) {
              break;
          }
 -        request->lltasks[i] = lltask;
 -        request->lltask_count = i + 1;
--        task = lltask->task;
+         task = lltask->task;
          if (task->do_ioproc) {
              if (ivsr_model->model->frame_pre_proc != NULL) {
-                 ivsr_model->model->frame_pre_proc(task->in_frame, &input,
 @@ -220,6 +236,56 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
                          av_log(ctx, AV_LOG_ERROR,
                                 "Read frame number is %d less than the model requirement!!!\n",

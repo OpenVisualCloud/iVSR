@@ -63,9 +63,9 @@ void completion_callback (void *args)
 
 #define COMMON_UNINIT                                                  \
     do {                                                               \
-        if (config) delete config;                                     \
-        if (config_device) delete config_device;                       \
-        if (config_res) delete config_res;                             \
+        delete config;                                                 \
+        delete config_device;                                          \
+        delete config_res;                                             \
     } while (0)                                                        \
 
 TEST(VSR_Unit_Test, ValidInputTestForInit_CPU_withCustom)
@@ -75,18 +75,17 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_CPU_withCustom)
     COMMON_SETUP;
 
     ivsr_config_t *config_customlib = nullptr;
-    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = extension.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_res->next = config_customlib;
 
     auto res = ivsr_init(config, &handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_CPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_CPU_withCustom test failed-deinit";
-    if (config_customlib) free(config_customlib);
+    free(config_customlib);
     COMMON_UNINIT;
     handle = nullptr;
 }
@@ -100,26 +99,24 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_GPU_withCustom)
     ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
     config_device->value = "GPU";
 
-    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = extension.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_res->next = config_customlib;
 
-    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
-    config_cldnn->value = cldnn_config.c_str();
+    config_cldnn->value = "./flow_warp.xml";
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_GPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_GPU_withCustom test failed-deinit";
-    if (config_customlib) free(config_customlib);
-    if (config_cldnn)     free(config_cldnn);
+    free(config_customlib);
+    free(config_cldnn);
     COMMON_UNINIT;
     handle = nullptr;
 }
@@ -133,26 +130,24 @@ TEST(VSR_Unit_Test, ValidInputTestForInit_MultiGPU_withCustom)
     ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
     config_device->value = "MULTI:GPU.0,GPU.1";
 
-    std::string extension = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->next = nullptr;
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = extension.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_res->next = config_customlib;
 
-    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->next = nullptr;
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
-    config_cldnn->value = cldnn_config.c_str();
+    config_cldnn->value = "./flow_warp.xml";
     config_customlib->next = config_cldnn;
 
     auto res = ivsr_init(config, &handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-init";
     res = ivsr_deinit(handle);
     EXPECT_EQ(IVSRStatus::OK, res) << "ValidInputTestForInit_MultiGPU_withCustom test failed-deinit";
-    if (config_customlib) free(config_customlib);
-    if (config_cldnn)     free(config_cldnn);
+    free(config_customlib);
+    free(config_cldnn);
     COMMON_UNINIT;
     handle = nullptr;
 }
@@ -165,10 +160,9 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     COMMON_SETUP;
 
     ivsr_config_t *config_customlib = nullptr;
-    std::string custom_lib = "./libcustom_extension.so";
     config_customlib= (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = custom_lib.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_customlib->next = nullptr;
     config_res->next = config_customlib;
 
@@ -208,7 +202,7 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_CPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    if (config_customlib) free(config_customlib);
+    free(config_customlib);
     COMMON_UNINIT;
     handle = nullptr;
 }
@@ -222,17 +216,15 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
     config_device->value = "GPU";
 
-    std::string custom_lib = "./libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = custom_lib.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_customlib->next = nullptr;
     config_res->next = config_customlib;
 
-    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
-    config_cldnn->value = cldnn_config.c_str();
+    config_cldnn->value = "./flow_warp.xml";
     config_cldnn->next = nullptr;
     config_customlib->next = config_cldnn;
 
@@ -272,8 +264,8 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_GPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    if (config_customlib) free(config_customlib);
-    if (config_cldnn)     free(config_cldnn);
+    free(config_customlib);
+    free(config_cldnn);
     COMMON_UNINIT;
     handle = nullptr;
 }
@@ -287,17 +279,15 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     ivsr_config_t *config_customlib = nullptr, *config_cldnn = nullptr;
     config_device->value = "MULTI:GPU.0,GPU.1";
 
-    std::string custom_lib = "./libcustom_extension.so";
     config_customlib = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_customlib->key = IVSRConfigKey::CUSTOM_LIB;
-    config_customlib->value = custom_lib.c_str();
+    config_customlib->value = "./libcustom_extension.so";
     config_customlib->next = nullptr;
     config_res->next = config_customlib;
 
-    std::string cldnn_config = "./flow_warp.xml";
     config_cldnn = (ivsr_config_t*)malloc(sizeof(ivsr_config_t));
     config_cldnn->key = IVSRConfigKey::CLDNN_CONFIG;
-    config_cldnn->value = cldnn_config.c_str();
+    config_cldnn->value = "./flow_warp.xml";
     config_cldnn->next = nullptr;
     config_customlib->next = config_cldnn;
 
@@ -337,8 +327,8 @@ TEST(VSR_Unit_Test, ValidInputTestForProcess_MultiGPU_withCustom)
     free(input_buffer);
     free(output_buffer);
     ivsr_deinit(handle);
-    if (config_customlib) free(config_customlib);
-    if (config_cldnn)     free(config_cldnn);
+    free(config_customlib);
+    free(config_cldnn);
     COMMON_UNINIT;
     handle = nullptr;
 }

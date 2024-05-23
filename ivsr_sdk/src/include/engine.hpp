@@ -25,7 +25,7 @@ private:
     std::function<IBasicVSRStatus()> init_func;
     std::function<IBasicVSRStatus(InferTask::Ptr task)> run_func;
     std::function<void()> wait_all_func;
-    Derived* _derived;
+    Derived* _derived = nullptr;
 
 public:
     // Template constructor binds the provided methods of the derived engine implementation

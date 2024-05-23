@@ -32,10 +32,16 @@ const std::string keys =
     "{reshape_values    | | Optional. Reshape network to fit the input image size. e.g. --reshape_values=\"(1,3,720,1280)\"}"
    ;
 
-bool checkPath(std::string path){
-    DIR *pDir;
-    if(!(pDir = opendir(path.c_str())) || path[path.size() - 1] == '/')
+bool checkPath(const std::string& path){
+    if (path.empty() || path.back() == '/') {
         return false;
+    }
+
+    DIR *pDir = opendir(path.c_str());
+    if (pDir == nullptr)
+        return false;
+
+    closedir(pDir);
     return true;
 }
 
@@ -123,7 +129,7 @@ struct callback_args{
     int flag;
     int nif;
     Time::time_point time;
-    callback_args(){}
+    callback_args():flag(0), nif(0){}
     callback_args(int f, int nif, Time::time_point t):flag(f),nif(nif),time(t){}
 };
 
@@ -161,7 +167,7 @@ bool commandLineCheck(int argc, char**argv,std::string keys){
         }
         std::string commandArg = arg.substr(start_pos+2,end_pos - start_pos -2);
         auto pos = keys.find(commandArg,0);
-        if(pos < 0 || pos >= keys.length()){
+        if(pos >= keys.length()){
             std::cout<<"Error command parameter: --" << commandArg <<std::endl;
             return false;
         }
