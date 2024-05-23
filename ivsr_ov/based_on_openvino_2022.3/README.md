@@ -16,9 +16,9 @@ This folder `based_on_openvino_2022.3` enables BasicVSR inference on Intel CPU/G
 ## Build Docker Image
 You can quickly create a docker image with the ready-to-use OpenVINO environment by executing `build_docker.sh`. The default docker image name is `ivsr_ov`.
 
-The detailed steps to enable GPU can be referenced to [ivsr_SDK GPU Enabling](https://github.com/intel-innersource/applications.services.cloud.visualcloud.video-processing.ivsr/blob/dev/ivsr_sdk/README.md#install-gpu-driver).
+The detailed steps to enable GPU can be referenced to [ivsr_SDK GPU Enabling](../../ivsr_sdk/ENVIRONMENT.md#install-gpu-driver).
 
-The detailed steps to build docker image can be referenced to [ivsr_SDK Build Docker Image](https://github.com/intel-innersource/applications.services.cloud.visualcloud.video-processing.ivsr/blob/dev/ivsr_sdk/README.md#build-docker-image).
+The detailed steps to build docker image can be referenced to [ivsr_SDK Build Docker Image](../../ivsr_sdk/ENVIRONMENT.md#build-docker-image).
 
 ## Start Docker Container 
 ```bash
