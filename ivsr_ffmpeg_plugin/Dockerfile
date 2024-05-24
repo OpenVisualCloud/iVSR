@@ -44,6 +44,7 @@ LABEL vendor="Intel Corporation"
 RUN mkdir -p /workspace/ivsr
 
 ARG ENABLE_OV_PATCH
+ARG OV_VERSION
 
 # openvino
 RUN apt-get update && \
@@ -96,7 +97,7 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
   cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
 COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
-RUN if [ "$ENABLE_OV_PATCH" = "true" ]; then \
+RUN if [ "$ENABLE_OV_PATCH" = "true" ] && [ "$OV_VERSION" = "2022.3" ]; then \
         apt-get update; \
         xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt; \
         apt-get install -y vainfo clinfo; \
@@ -105,11 +106,28 @@ RUN if [ "$ENABLE_OV_PATCH" = "true" ]; then \
     fi
 RUN rm ${WORKSPACE}/dgpu_umd_stable_555_0124.txt
 
+RUN if [ "$OV_VERSION" = "2023.2" ]; then \
+      # for GPU
+      apt-get update; \
+      apt-get install -y vainfo clinfo; \
+      apt-get install -y --no-install-recommends ocl-icd-libopencl1; \
+      apt-get clean; \
+      rm -rf /var/lib/apt/lists/* && rm -rf /tmp/*; \
+      # hadolint ignore=DL3003
+      mkdir /tmp/gpu_deps && cd /tmp/gpu_deps; \
+      curl -L -O https://github.com/intel/compute-runtime/releases/download/23.05.25593.11/libigdgmm12_22.3.0_amd64.deb; \
+      curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.13700.14/intel-igc-core_1.0.13700.14_amd64.deb; \
+      curl -L -O https://github.com/intel/intel-graphics-compiler/releases/download/igc-1.0.13700.14/intel-igc-opencl_1.0.13700.14_amd64.deb; \
+      curl -L -O https://github.com/intel/compute-runtime/releases/download/23.13.26032.30/intel-opencl-icd_23.13.26032.30_amd64.deb; \
+      curl -L -O https://github.com/intel/compute-runtime/releases/download/23.13.26032.30/libigdgmm12_22.3.0_amd64.deb; \
+      dpkg -i ./*.deb && rm -Rf /tmp/gpu_deps; \
+    fi
+
 ENV LD_LIBRARY_PATH=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib:$LD_LIBRARY_PATH
 ENV OpenCV_DIR=${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/lib/cmake/opencv4
 ARG IVSR_DIR=${WORKSPACE}/ivsr
-ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino
-ARG CUSTOM_OV_INSTALL_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_2022.3/openvino/install
+ARG IVSR_OV_DIR=${IVSR_DIR}/ivsr_ov/based_on_openvino_${OV_VERSION}/openvino
+ARG CUSTOM_OV_INSTALL_DIR=${IVSR_OV_DIR}/install
 ARG IVSR_SDK_DIR=${IVSR_DIR}/ivsr_sdk/
 
 RUN apt-get update && \
@@ -153,17 +171,17 @@ RUN ln -sf $(which ${PYTHON}) /usr/local/bin/python && \
     ln -sf $(which ${PYTHON}) /usr/bin/python3
 
 ARG OV_REPO=https://github.com/openvinotoolkit/openvino.git
-ARG OV_VERSION=2022.3.0
+ARG OV_BRANCH=${OV_VERSION}.0
 RUN git clone ${OV_REPO} ${IVSR_OV_DIR} && \
     cd ${IVSR_OV_DIR} && \
-    git checkout 2022.3.0 && \
+    git checkout ${OV_BRANCH} && \
     git submodule update --init --recursive
 
 RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name"
 
 COPY ./ivsr_ov/based_on_openvino_2022.3/patches/*.patch ${IVSR_OV_DIR}/../patches/
-RUN if [ "$ENABLE_OV_PATCH" = "true" ]; then \
+RUN if [ "$ENABLE_OV_PATCH" = "true" ] && [ "$OV_VERSION" = "2022.3" ]; then \
         cd ${IVSR_OV_DIR}; \
         { set -e; \
             for patch_file in $(find ../patches -iname "*.patch" | sort -n); do \

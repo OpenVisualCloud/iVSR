@@ -45,17 +45,18 @@ sudo systemctl restart docker
 
 ```bash
 cd ivsr_ffmpeg_plugin
-./build_docker.sh
+./build_docker.sh --enable_ov_patch [true|false] --ov_version [2022.3|2023.2]
 ```
-
-If building successfully, you can see a docker image named `ffmpeg_ivsr_sdk` .
+Currently ivsr support OpenVINO 2022.3 and 2023.2, but only OpenVINO 2022.3 version supports Enhanced BasicVSR model and need to apply some patches to support the model.
+`--enable_ov_patch` to set true/flase to enable/disable apply pacthes of OpenVINO 2022.3 which are required to support Enhanced BasicVSR model, `--ov_version` to set OpenVINO version to 2022.3 or 2023.2.
+If building successfully, you can see a docker image named `ffmpeg_ivsr_sdk_ov2022.3` or `ffmpeg_ivsr_sdk_ov2023.2` .
 
 ## Start Docker Container
 
 ```bash
-sudo docker run -itd --name ffmpeg_ivsr_sdk --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/snd:/dev/snd ffmpeg_ivsr_sdk:latest bash
+sudo docker run -itd --name ffmpeg_ivsr_sdk --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/snd:/dev/snd ffmpeg_ivsr_sdk_[ov2022.3|ov2023.2]:latest bash
 sudo docker exec -it ffmpeg_ivsr_sdk bash
-source /workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/install/setupvars.sh
+/workspace/ivsr/ivsr_ov/based_on_openvino_[2022.3|2023.2]/openvino/install/setupvars.sh
 ldconfig
 ```
 ## How to run inference with FFmpeg-plugin
