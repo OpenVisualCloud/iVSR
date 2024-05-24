@@ -39,5 +39,5 @@ target_link_libraries(${TARGET_NAME} PRIVATE openvino::runtime z)
 add_custom_command(
     TARGET ${TARGET_NAME}
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libirguard.a
-            ${CMAKE_CURRENT_SOURCE_DIR}/../model_guard.bin
+            ${CMAKE_CURRENT_SOURCE_DIR}/../model_guard.bin/libirguard.a-${OpenVINO_VERSION}
     POST_BUILD)
