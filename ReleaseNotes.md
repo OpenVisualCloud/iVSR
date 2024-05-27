@@ -23,4 +23,5 @@
 - Parallel inference on heterogeneous hardware is not enabled yet.
 - Only 8-bit data is supported in vsr_sample or iVSR FFmpeg plugin.
 - (Meta VSR model is not working on GPU.)
+- Enhanced BasicVSR model works only on OpenVINO 2022.3 with the patches applied.
 

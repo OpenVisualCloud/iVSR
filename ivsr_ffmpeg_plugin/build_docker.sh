@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ "OV_VERSION" = "2023.2" ]; then
+if [ "$OV_VERSION" = "2023.2" ]; then
     ENABLE_OV_PATCH="false"
     echo "There is no openvino patches for openvino 2023.2 version, will ignore the setting of ENABLE_OV_PATCH"
 fi

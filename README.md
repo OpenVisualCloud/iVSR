@@ -63,10 +63,52 @@ Please expect `pre-production` quality of current solution.
 Refer to the guide [here](ivsr_sdk/README.md).
 
 ### 2. Run with FFmpeg
+#### 2.1 Run with FFmpeg in Docker container
 Refer to the guide [here](ivsr_ffmpeg_plugin/README.md).
+#### 2.2 Run with FFmpeg using host environment
+- Create python virtual environment
+    ```bash
+    sudo apt --fix-broken install
+    sudo apt install python3.10-venv
+    python3 -m venv ivsr_venv
+    source ./ivsr_venv/bin/activate
+    ```
+- Build ivsr environment in host & Set environment variables
+    ```bash
+    sudo ./build_ivsr.sh --enable_ov_patch <true/false> --enable_compile_ffmpeg true --ov_version <2022.3|2023.2>
+    source ./ivsr_setupvar.sh --ov_version <2022.3|2023.2>
+    ```
+    If you want to run Enhanced BasicVSR model, must set `--enable_ov_patch true` && `--ov_version 2022.3`.
+
+- How to run inference with FFmpeg-plugin
+    - Use FFmpeg-plugin to run Enhanced BasicVSR inference, needs to set extension and op_xml options to run Enhanced BasicVSR model
+        ```
+        cd <your project folder>/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+        ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:backend_configs='device=<CPU or GPU>&extension=<your project folder>/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so&op_xml=<your project folder>/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml' test_out.mp4
+        ```
+    - Use FFmpeg-plugin to run SVP inference
+        ```
+        cd <your project folder>/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+        ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=1' test_out.mp4
+        ```
+    - Use FFmpeg-plugin to run Enhanced EDSR inference
+        ```
+        cd <your project folder>/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+        ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=2&normalize_factor=255.0' test_out.mp4
+        ```
+    - Use FFmpeg-plugin to run CUSTOM VSR inference
+        ```
+        cd <your project folder>/workspace/ivsr/
+        ./ffmpeg -i <your test video> -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<customvsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=3' test_out.mp4
+        ```
+    - Use FFmpeg-plugin to run TSENet model
+        ```
+        cd <your project folder>/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+        ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<tsenet_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=4' test_out.mp4
+        ```
+
 
 Please [contact us](mailto:beryl.xu@intel.com) to get the models.
-
 
 ## License
 
