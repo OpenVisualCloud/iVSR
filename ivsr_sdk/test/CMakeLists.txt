@@ -1,5 +1,5 @@
-# Copyright (C) 2022 Intel Corporation
-# SPDX-License-Identifier: Apache-2.0
+# Copyright (C) 2023 Intel Corporation
+# SPDX-License-Identifier: AI TECHNOLOGY EVALUATION LICENSE
 #
 cmake_minimum_required(VERSION 3.10)
 set (TARGET_NAME "vsr_unit_test")

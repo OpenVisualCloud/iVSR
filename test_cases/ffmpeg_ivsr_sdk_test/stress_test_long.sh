@@ -1,6 +1,6 @@
 #!/bin/bash
 MODEL_PATH=/workspace
-BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models
+BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
 FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
@@ -43,9 +43,7 @@ stress_test()
     case ${model_name} in
     BasicVSR)
         if [ ${model_type} = "fp32" ];then
-            model=${BasicVSR_PATH}/ov1_w_custom_fp32/basicvsr_x2_release_ov1_w_custom_fp32_3x1080x1920.xml
-        else
-            model=${BasicVSR_PATH}/ov1_w_custom_int8/basicvsr_x2_release_ov1_w_custom_int8_3x1080x1920.xml
+            model=${BasicVSR_PATH}/fp32/basicvsr_x2_opensource_release_dynamic.xml
         fi
         model_num=0
         nif=3
@@ -103,8 +101,8 @@ run()
     echo "Start Streess Test(Long)"
     stress_test BasicVSR fp32 CPU
     stress_test BasicVSR fp32 GPU
-    stress_test BasicVSR int8 CPU
-    stress_test BasicVSR int8 GPU
+    # stress_test BasicVSR int8 CPU
+    # stress_test BasicVSR int8 GPU
     stress_test EDSR fp32 CPU
     stress_test EDSR fp32 GPU
     stress_test CUSTOMER fp32 CPU

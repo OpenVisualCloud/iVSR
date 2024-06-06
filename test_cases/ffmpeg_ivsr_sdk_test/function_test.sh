@@ -1,6 +1,6 @@
 #!/bin/bash
 MODEL_PATH=/workspace
-BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models
+BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
 FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
@@ -108,7 +108,53 @@ resolutions_all=(
 "888x1578"
 "220x400"
 )
-
+resolutions_width_32align=(
+"640x640"
+"640x360"
+"576x1024"
+"1280x720"
+"480x854"
+"960x540"
+"288x512"
+"512x288"
+"480x852"
+"384x384"
+"480x480"
+"352x640"
+"960x960"
+"512x640"
+"480x270"
+"224x400"
+"640x480"
+"1920x1080"
+"608x1080"
+"480x848"
+"544x960"
+"256x256"
+"384x216"
+"960x720"
+"640x352"
+"1280x1280"
+"480x640"
+"320x400"
+"256x144"
+"512x512"
+"1024x1280"
+"1088x1920"
+"576x576"
+"384x480"
+"480x360"
+"384x288"
+"864x1080"
+"640x1138"
+"512x384"
+"640x368"
+"1600x900"
+"1024x576"
+"1440x1080"
+"320x576"
+"960x544"
+)
 #BasicVSR model need to set extension and op_xml options
 EXTENSION=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so
 OP_XML=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml
@@ -149,15 +195,13 @@ function_test()
     case ${model_name} in
     BasicVSR)
         if [ ${model_type} = "fp32" ];then
-            model=${BasicVSR_PATH}/ov1_w_custom_fp32/basicvsr_x2_release_ov1_w_custom_fp32_3x1080x1920.xml
-        else
-            model=${BasicVSR_PATH}/ov1_w_custom_int8/basicvsr_x2_release_ov1_w_custom_int8_3x1080x1920.xml
+            model=${BasicVSR_PATH}/fp32/basicvsr_x2_opensource_release_dynamic.xml
         fi
         model_num=0
         nif=3
         normalize_factor=1.0
         format=bgr24
-        resolution_list="1920x1080"
+        resolution_list=("${resolutions_width_32align[@]}")
         rest_param="&extension=${EXTENSION}&op_xml=${OP_XML}&"
         ;;
     EDSR)
@@ -254,8 +298,8 @@ run()
     echo "Start Function Test"
     function_test BasicVSR fp32 CPU
     function_test BasicVSR fp32 GPU
-    function_test BasicVSR int8 CPU
-    function_test BasicVSR int8 GPU
+    # function_test BasicVSR int8 CPU
+    # function_test BasicVSR int8 GPU
     function_test EDSR fp32 CPU
     function_test EDSR fp32 GPU
     function_test CUSTOMER fp32 CPU

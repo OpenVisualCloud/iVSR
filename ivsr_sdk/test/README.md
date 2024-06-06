@@ -6,7 +6,7 @@ In this folder, it contains the tests defined for iVSR SDK.
 ##  **Unit tests**
 
 
-There are some unit tests for the iVSR API. You can reach the unit tests from `/workspace/ivsr/ivsr_sdk/bin/vsr_unit_test` if it was built in docker container.<br />
+There are some unit tests for the iVSR API. You can reach the unit tests from `<iVSR project path>/ivsr_sdk/bin/vsr_unit_test` if it was built in docker container.<br />
 
 Since model is essential for inference, you need to prepare models (*.bin and *.xml ) to the same path of `vsr_unit_test` and rename the model files to "test_with_custom_op.xml" and "test_with_custom_op.bin". And put the extension lib file "libcustom_extension.so" and clDNN custom operation file "flow_warp.xml/flow_warp.cl" in the same folder as `vsr_unit_test`.<br />
 

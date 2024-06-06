@@ -1,3 +1,6 @@
+# Copyright (C) 2023 Intel Corporation
+# SPDX-License-Identifier: AI TECHNOLOGY EVALUATION LICENSE
+#
 set(TARGET_NAME "ivsr")
 
 # set(LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../lib)

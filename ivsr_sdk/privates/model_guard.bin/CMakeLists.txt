@@ -1,3 +1,6 @@
+# Copyright (C) 2023 Intel Corporation
+# SPDX-License-Identifier: AI TECHNOLOGY EVALUATION LICENSE
+#
 set(TARGET_NAME "irguard")
 
 find_package(OpenVINO REQUIRED)

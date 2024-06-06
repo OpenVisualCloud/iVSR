@@ -97,7 +97,7 @@ RUN cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2 && mkdir build && mkdir insta
   cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
 COPY ./ivsr_sdk/dgpu_umd_stable_555_0124.txt ${WORKSPACE}/
-RUN if [ "$ENABLE_OV_PATCH" = "true" ] && [ "$OV_VERSION" = "2022.3" ]; then \
+RUN if [ "$OV_VERSION" = "2022.3" ]; then \
         apt-get update; \
         xargs apt-get install -y --no-install-recommends --fix-missing < ${WORKSPACE}/dgpu_umd_stable_555_0124.txt; \
         apt-get install -y vainfo clinfo; \
@@ -236,7 +236,7 @@ COPY ./ivsr_sdk $IVSR_SDK_DIR
 RUN  mkdir -p ${IVSR_SDK_DIR}/build && \
      cd ${IVSR_SDK_DIR}/build && \
      cmake .. \
-       -DENABLE_LOG=ON -DENABLE_PERF=ON -DENABLE_TEST=ON -DENABLE_THREADPROCESS=ON \
+       -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
        -DCMAKE_BUILD_TYPE=Release && \
      make && \
      echo "Building vsr sdk finished."

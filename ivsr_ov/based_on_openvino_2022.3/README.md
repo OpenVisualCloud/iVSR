@@ -22,14 +22,14 @@ The detailed steps to build docker image can be referenced to [ivsr_SDK Build Do
 
 ## Start Docker Container 
 ```bash
-sudo docker run -itd --name ivsr_ov --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/snd:/dev/snd    ivsr_sdk:latest bash
+sudo docker run -itd --name ivsr_ov --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/dri:/dev/dri    ivsr_sdk:latest bash
 sudo docker exec -it ivsr_ov bash
 ```
 
 ## BasicVSR Inference Sample
 There is a C++ sample to perform BasicVSR inference on OpenVINO backend. You can reach the sample code and the executable file after you have built the docker image and started the docker container successfully. 
 
-You can run `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -h` to get help messages and see the default settings of parameters. 
+You can run `<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -h` to get help messages and see the default settings of parameters. 
 
 |Option name|Desciption|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
@@ -46,10 +46,10 @@ You can run `/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel
 Please note that all the pathes specified options should exist and do not end up with '/'. Here are some examples to run BasicVSR inference:
 ```bash
 # Run the inference evaluation on CPU
-/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -model_path=<IR model path(.xml)> -extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so -data_path=<Directory path including input frames> -nif=<Number of input frames> -device=CPU -save_predictions -save_path=<Directory path to save results> -cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_custom_op/flow_warp.xml
+<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -model_path=<IR model path(.xml)> -extension=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so -data_path=<Directory path including input frames> -nif=<Number of input frames> -device=CPU -save_predictions -save_path=<Directory path to save results> -cldnn_config=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_custom_op/flow_warp.xml
 
 # Run the inference evaluation on GPU
-/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -model_path=<IR model path(.xml)> -extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so -data_path=<Directory path including input frames> -nif=<Number of input frames> -device=GPU -save_predictions -save_path=<Directory path to save results> -cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_custom_op/flow_warp.xml
+<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/basicvsr_sample -model_path=<IR model path(.xml)> -extension=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so -data_path=<Directory path including input frames> -nif=<Number of input frames> -device=GPU -save_predictions -save_path=<Directory path to save results> -cldnn_config=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_custom_op/flow_warp.xml
 ```
 
 
