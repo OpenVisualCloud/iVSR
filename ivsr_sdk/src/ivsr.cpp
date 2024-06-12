@@ -213,6 +213,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     std::vector<size_t> reshape_settings;
     std::vector<size_t> reso;
     size_t frame_width = 0, frame_height = 0;
+    int reshape_dim =0, reshape_h =0, reshape_w = 0;
     while(configs!=nullptr){
         IVSRStatus unsupported_status = IVSRStatus::OK;
         std::string unsupported_output = "";
@@ -268,6 +269,13 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 break;
             case IVSRConfigKey::RESHAPE_SETTINGS:
                 reshape_settings = convert_string_to_vector(configs->value);
+                reshape_dim = reshape_settings.size();
+                reshape_h = reshape_settings[reshape_dim - 2];
+                reshape_w = reshape_settings[reshape_dim - 1];
+                if (reshape_h % 2 !=0 || reshape_w %2 !=0){
+                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE,configs->value);
+                    return IVSRStatus::UNSUPPORTED_SHAPE;
+                }
                 break;
             case IVSRConfigKey::INPUT_RES:
                 //in format "<width>,<height>"
