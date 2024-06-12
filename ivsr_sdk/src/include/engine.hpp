@@ -34,8 +34,8 @@ template<typename Derived>
 class engine {
 private:
     // Function objects for type-erased calls to interface methods
-    std::function<IBasicVSRStatus()> init_func;
-    std::function<IBasicVSRStatus(InferTask::Ptr task)> run_func;
+    std::function<IVSRStatus()> init_func;
+    std::function<IVSRStatus(InferTask::Ptr task)> run_func;
     std::function<void()> wait_all_func;
     Derived* _derived = nullptr;
 
@@ -43,25 +43,25 @@ public:
     // Template constructor binds the provided methods of the derived engine implementation
     engine(Derived* derived)
         : _derived(derived),
-          init_func([=]() -> IBasicVSRStatus { return _derived->init_impl(); }),
-          run_func([=](InferTask::Ptr task) -> IBasicVSRStatus { return _derived->run_impl(task); }),
+          init_func([=]() -> IVSRStatus { return _derived->init_impl(); }),
+          run_func([=](InferTask::Ptr task) -> IVSRStatus { return _derived->run_impl(task); }),
           wait_all_func([=]() { _derived->wait_all_impl(); })
     {}
 
     engine() = default;
 
     // Public interface methods call the type-erased std::function members
-    IBasicVSRStatus init() {
+    IVSRStatus init() {
         return init_func();
     }
 
-    IBasicVSRStatus run(InferTask::Ptr task) {
+    IVSRStatus run(InferTask::Ptr task) {
         return run_func(task);
     }
 
     // The templated get_attr method delegates to the derived class's method
     template <typename T>
-    IBasicVSRStatus get_attr(const std::string& key, T& value) {
+    IVSRStatus get_attr(const std::string& key, T& value) {
         // Using CRTP style static_cast to delegate to the actual implementation provided by the derived class
         // For this to work, the derived class must implement get_attr_impl with the appropriate signature
         return _derived->get_attr_impl(key, value);
@@ -73,7 +73,7 @@ public:
 
     Derived* get_impl() const { return _derived; }
 
-    IBasicVSRStatus create_infer_requests(size_t requests_num) {
+    IVSRStatus create_infer_requests(size_t requests_num) {
         return _derived->create_infer_requests_impl(requests_num);
     }
 

@@ -28,7 +28,7 @@
 
 typedef std::chrono::high_resolution_clock Time;
 
-IBasicVSRStatus ov_engine::init_impl()
+IVSRStatus ov_engine::init_impl()
 {
     if (custom_lib_ != "")
         instance_.add_extension(custom_lib_);
@@ -59,6 +59,14 @@ IBasicVSRStatus ov_engine::init_impl()
         ov::Shape tensor_shape = reshape_settings_;
 
         size_t batch_index, channels_index, h_index, w_index;
+        if (tensor_shape.size() == 5){
+            const ov::Layout model_layout{"NFCHW"};
+            w_index = ov::layout::width_idx(model_layout);
+            if(tensor_shape[w_index] % 32 != 0){
+                std::cout << "[Error]: " << "Current model requires input widths to be divisible by 32" << std::endl;
+                return UNSUPPORTED_SHAPE;
+            }
+        }
         if (multiple_inputs) {
             const ov::Layout model_layout{"NCHW"};
             batch_index = ov::layout::batch_idx(model_layout);
@@ -112,14 +120,14 @@ IBasicVSRStatus ov_engine::init_impl()
     std::cout << "[Trace]: " << "ov_engine init successfully" << std::endl;
 #endif
 
-    return SUCCESS;
+    return OK;
 }
 
-IBasicVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
+IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
     //construct the input tensor
     if(task->inputPtr_ == nullptr || task->outputPtr_ == nullptr) {
         std::cout << "[Error]: " << "invalid input buffer pointer" << std::endl;
-        return ERROR;
+        return GENERAL_ERROR;
     }
     auto inferReq = get_idle_request();
 
@@ -166,13 +174,13 @@ IBasicVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
     std::cout << "[Trace]: " << "ov_engine run: start task inference" << std::endl;
 #endif
 
-    return SUCCESS;
+    return OK;
 }
 
-IBasicVSRStatus ov_engine::create_infer_requests_impl(size_t requests_num) {
+IVSRStatus ov_engine::create_infer_requests_impl(size_t requests_num) {
     if (requests_num < requests_.size()) {
         std::cout << "[ERROR]: " << "please pass correct requests num.\n";
-        return ERROR;
+        return GENERAL_ERROR;
     }
 
     for (int id = requests_.size(); id < requests_num; ++id) {
@@ -182,5 +190,5 @@ IBasicVSRStatus ov_engine::create_infer_requests_impl(size_t requests_num) {
         idleIds_.push(id);
     }
 
-    return SUCCESS;
+    return OK;
 }

@@ -107,15 +107,15 @@ public:
           custom_lib_(custom_lib),
           configs_(configs),
           reshape_settings_(reshape_settings) {
-        init();
+        //init();
     }
 
-    IBasicVSRStatus init_impl();
+    IVSRStatus init_impl();
 
-    IBasicVSRStatus run_impl(InferTask::Ptr task);
+    IVSRStatus run_impl(InferTask::Ptr task);
 
     template <typename T>
-    IBasicVSRStatus get_attr_impl(const std::string& key, T& value) {
+    IVSRStatus get_attr_impl(const std::string& key, T& value) {
         static_assert(std::is_same<T, ov::Shape>::value || std::is_same<T, size_t>::value,
                       "get_attr() is only supported for 'ov::Shape' and 'size_t' types");
 
@@ -131,18 +131,18 @@ public:
                 extend_shape(shape, size_t{5});
                 value = shape;
             } else {
-                return ERROR;
+                return UNSUPPORTED_KEY;
             }
         } else if constexpr (std::is_same<T, size_t>::value) {
             if (key == "input_dims" || key == "output_dims") {
                 const auto& shape = (key == "input_dims") ? input_.get_shape() : output_.get_shape();
                 value = shape.size() < 5 ? 5 : shape.size();
             } else {
-                return ERROR;
+                return UNSUPPORTED_KEY;
             }
         }
 
-        return SUCCESS;
+        return OK;
     }
 
     inferReqWrap::Ptr get_idle_request() {
@@ -176,7 +176,7 @@ public:
         });
     }
 
-    IBasicVSRStatus create_infer_requests_impl(size_t requests_num);
+    IVSRStatus create_infer_requests_impl(size_t requests_num);
 
     const size_t get_infer_requests_size_impl() {
         return requests_.size();

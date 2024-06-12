@@ -310,6 +310,12 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
     // 3.construct and initialization
     // - initialize inference engine
     (*handle)->inferEngine = {new ov_engine(device, model, custom_lib, engine_configs, reshape_settings)};
+    IVSRStatus status;
+    status = (*handle)->inferEngine.init();
+    if(status != IVSRStatus::OK){
+        ivsr_status_log(status, "in ivsr_init");
+        return IVSRStatus::UNSUPPORTED_SHAPE;
+    }
     // -construct IVSRThreadExecutor object
     IVSRThread::Config executorConfig;
     (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine.get_impl());
@@ -382,7 +388,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
     // create infer requests based on patch list size
     if (patchList.size() > handle->inferEngine.get_infer_requests_size()) {
         auto res = handle->inferEngine.create_infer_requests(patchList.size());
-        if (res == -1) {
+        if (res == IVSRStatus::GENERAL_ERROR) {
             std::cout << "[ERROR]: " << "Failed to creat infer requests!\n";
             delete smartPatch;
             return IVSRStatus::GENERAL_ERROR;
