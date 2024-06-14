@@ -203,7 +203,13 @@ int main(int argc, char** argv){
     bool save_predictions = parser.get<bool>("save_predictions");
     std::string save_path = parser.get<std::string>("save_path");
     float normalize_factor = parser.get<float>("normalize_factor");
-
+    const float NORMALFACTOR_MIN = 1.0;
+    const float NORMALFACTOR_MAX = 255.0;
+    if(normalize_factor < NORMALFACTOR_MIN || normalize_factor > NORMALFACTOR_MAX)
+    {
+        std::cout << "Invalid normalize_factor value! Please enter a value between 1.0 and 255.0."<<std::endl;
+        return -1;
+    }
 
     // vsr scale
     int scaleFactor = parser.get<int>("scale_factor");
