@@ -24,7 +24,8 @@ cd ./build
 cmake .. \
  -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_TEST=ON -DENABLE_THREADPROCESS=ON \
  -DCMAKE_BUILD_TYPE=Release
-make
+make -j $(nproc --all)
+make install
 
 echo "Building vsr finished."
 

@@ -244,7 +244,8 @@ WORKDIR ${IVSR_SDK_DIR}/build
 RUN cmake .. \
       -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
       -DCMAKE_BUILD_TYPE=Release && \
-    make && \
+    make -j $(nproc --all) && \
+    make install && \
     echo "Building vsr sdk finished."
 
 #build ffmpeg wiht iVSR SDK backend
@@ -291,8 +292,6 @@ RUN if [ -f "${CUSTOM_OV_INSTALL_DIR}/setvars.sh" ]; then \
     export LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:${CUSTOM_IE_LIBDIR}:${TBB_DIR}/../lib:"$LD_LIBRARY_PATH" && \
     ./configure \
     --enable-libivsr \
-    --extra-cflags=-I${IVSR_SDK_DIR}/include/ \
-    --extra-ldflags=-L${IVSR_SDK_DIR}/lib \
     --disable-static \
     --disable-doc \
     --enable-shared \
