@@ -4,6 +4,7 @@ MODEL_PATH=/workspace
 BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
+SVP_PATH=${MODEL_PATH}/SVP
 FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 H=1080
 W=1920
@@ -96,6 +97,19 @@ stress_loop_test()
         normalize_factor=1.0
         format=yuv420p
         ;;
+    SVP)
+        if [ ${model_type} = "fp32" ];then
+            model=${SVP_PATH}/FP32/dunet.xml
+        elif [ ${model_type} = "fp16" ];then
+            model=${SVP_PATH}/FP16/dunet.xml
+        else
+            model=${SVP_PATH}/INT8-performance/dunet.xml
+        fi
+        model_num=1
+        nif=1
+        normalize_factor=1.0
+        format=bgr24
+        ;;
     *)
         echo "Unknown model name: $value"
         ;;
@@ -150,6 +164,12 @@ run()
     stress_loop_test EDSR fp32 CPU
     stress_loop_test EDSR fp32 GPU
     stress_loop_test CUSTOMER fp32 CPU
+    stress_loop_test SVP fp32 CPU
+    stress_loop_test SVP fp32 GPU
+    stress_loop_test SVP fp16 CPU
+    stress_loop_test SVP fp16 GPU
+    stress_loop_test SVP int8 CPU
+    stress_loop_test SVP int8 GPU
     delete_testvideo
     echo "Finish Streess Test(Loop)"
 }

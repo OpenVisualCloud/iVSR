@@ -3,6 +3,7 @@ MODEL_PATH=/workspace
 BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
+SVP_PATH=${MODEL_PATH}/SVP
 FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 TEST_SCRIPT_DIR=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test
 OUT_MD5_FILE=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test/testvideo_model_output_md5.txt
@@ -107,6 +108,68 @@ resolutions_all=(
 "268x480"
 "888x1578"
 "220x400"
+)
+resolutions_8align=(
+"720x1280"
+"640x640"
+"640x360"
+"360x640"
+"576x1024"
+"1080x1920"
+"1280x720"
+"1080x1080"
+"360x360"
+"288x512"
+"512x288"
+"384x384"
+"720x720"
+"480x480"
+"352x640"
+"960x960"
+"512x640"
+"224x400"
+"216x384"
+"640x480"
+"1920x1080"
+"608x1080"
+"480x848"
+"544x960"
+"720x960"
+"256x256"
+"384x216"
+"960x720"
+"640x352"
+"1280x1280"
+"480x640"
+"320x400"
+"256x144"
+"400x400"
+"512x512"
+"1024x1280"
+"144x256"
+"1088x1920"
+"576x576"
+"384x480"
+"368x656"
+"1200x1200"
+"480x360"
+"384x288"
+"400x224"
+"864x1080"
+"512x384"
+"640x368"
+"368x640"
+"600x600"
+"848x480"
+"680x1200"
+"272x480"
+"1024x576"
+"1440x1080"
+"320x576"
+"720x896"
+"1000x1000"
+"432x768"
+"960x544"
 )
 resolutions_width_32align=(
 "640x640"
@@ -228,6 +291,20 @@ function_test()
         format=bgr24
         resolution_list=("${resolutions_all[@]}")
         ;;
+    SVP)
+        if [ ${model_type} = "fp32" ];then
+            model=${SVP_PATH}/FP32/dunet.xml
+        elif [ ${model_type} = "fp16" ];then
+            model=${SVP_PATH}/FP16/dunet.xml
+        else
+            model=${SVP_PATH}/INT8-performance/dunet.xml
+        fi
+        model_num=1
+        nif=1
+        normalize_factor=1.0
+        format=bgr24
+        resolution_list=("${resolutions_8align[@]}")
+        ;;
     *)
         echo "Unknown model name: $value"
         ;;
@@ -304,6 +381,12 @@ run()
     function_test EDSR fp32 GPU
     function_test CUSTOMER fp32 CPU
     #function_test TSENET fp32 CPU
+    function_test SVP fp32 CPU
+    function_test SVP fp32 GPU
+    function_test SVP fp16 CPU
+    function_test SVP fp16 GPU
+    function_test SVP int8 CPU
+    function_test SVP int8 GPU
     delete_testvideo
     echo "Finish Function Test"
 
