@@ -3,7 +3,8 @@ MODEL_PATH=/workspace
 BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
 EDSR_PATH=${MODEL_PATH}
 CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
-SVP_PATH=${MODEL_PATH}/SVP
+SVP_BASIC_PATH=${MODEL_PATH}/SVP_BASIC
+SVP_SE_PATH=${MODEL_PATH}/SVP_SE
 FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 TEST_SCRIPT_DIR=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test
 OUT_MD5_FILE=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test/testvideo_model_output_md5.txt
@@ -293,11 +294,23 @@ function_test()
         ;;
     SVP)
         if [ ${model_type} = "fp32" ];then
-            model=${SVP_PATH}/FP32/dunet.xml
+            model=${SVP_BASIC_PATH}/FP32/dunet.xml
         elif [ ${model_type} = "fp16" ];then
-            model=${SVP_PATH}/FP16/dunet.xml
+            model=${SVP_BASIC_PATH}/FP16/dunet.xml
         else
-            model=${SVP_PATH}/INT8-performance/dunet.xml
+            model=${SVP_BASIC_PATH}/INT8-performance/dunet.xml
+        fi
+        model_num=1
+        nif=1
+        normalize_factor=1.0
+        format=bgr24
+        resolution_list=("${resolutions_8align[@]}")
+        ;;
+    SVP_SE)
+        if [ ${model_type} = "fp16" ];then
+            model=${SVP_SE_PATH}/fp16-dynamic-shape/qnet3m_16165.xml
+        else
+            echo "Unknown SVP-SE model type: $model_type"
         fi
         model_num=1
         nif=1
@@ -387,6 +400,8 @@ run()
     function_test SVP fp16 GPU
     function_test SVP int8 CPU
     function_test SVP int8 GPU
+    function_test SVP_SE fp16 CPU
+    function_test SVP_SE fp16 GPU
     delete_testvideo
     echo "Finish Function Test"
 
