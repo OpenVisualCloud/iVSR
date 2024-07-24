@@ -118,6 +118,7 @@ mkdir -p ./build
 cd ./build
 cmake .. -DENABLE_THREADPROCESS=ON -DCMAKE_BUILD_TYPE=Release
 make
+make install
 ```
 ### 2.2.5 Build FFmpeg with iVSR plugin
 We provide patches specifically for FFmpeg n6.1. Apply these patches as instructed below:<br>
@@ -134,7 +135,7 @@ done;
 Finally, build FFmpeg. You can also enable other FFmpeg plugins as per the instructions provided in the [Compile FFmpeg for Ubuntu](https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu) guide.<br>
 ```bash
 source <OpenVINO installation folder>/install/setupvars.sh
-./configure --enable-libivsr --extra-cflags=-I<Package_DIR>/ivsr_sdk/include/ --extra-ldflags=-L<Package_DIR>/ivsr_sdk/lib
+./configure --enable-libivsr --extra-cflags=-fopenmp --extra-ldflags=-fopenmp
 make -j $(nproc --all)
 make install
 ```

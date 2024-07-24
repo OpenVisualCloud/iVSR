@@ -291,6 +291,8 @@ RUN if [ -f "${CUSTOM_OV_INSTALL_DIR}/setvars.sh" ]; then \
     fi && \
     export LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:${CUSTOM_IE_LIBDIR}:${TBB_DIR}/../lib:"$LD_LIBRARY_PATH" && \
     ./configure \
+    --extra-cflags=-fopenmp \
+    --extra-ldflags=-fopenmp \
     --enable-libivsr \
     --disable-static \
     --disable-doc \

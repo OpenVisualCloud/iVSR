@@ -290,6 +290,8 @@ if ${ENABLE_COMPILE_FFMPEG}; then
   export LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:${CUSTOM_IE_LIBDIR}:${TBB_DIR}/../lib:"$LD_LIBRARY_PATH"
   cd ${FFMPEG_DIR}
   ./configure \
+  --extra-cflags=-fopenmp \
+  --extra-ldflags=-fopenmp \
   --enable-libivsr \
   --disable-static \
   --disable-doc \
