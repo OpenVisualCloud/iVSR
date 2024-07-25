@@ -1,12 +1,23 @@
 #!/bin/bash
-MODEL_PATH=/workspace
-BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
-EDSR_PATH=${MODEL_PATH}
-CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
-SVP_BASIC_PATH=${MODEL_PATH}/SVP_BASIC
-SVP_SE_PATH=${MODEL_PATH}/SVP_SE
-FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
-TEST_SCRIPT_DIR=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test
+
+json_file="test_params.json"
+if [[ ! -f "$json_file" ]]; then
+  echo "$json_file does not exist!"
+  exit 1
+fi
+
+json_data=$(cat "$json_file")
+test_case=$(echo "$json_data" | jq -r '.test_cases')
+BasicVSR_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.BasicVSR_FP32_PATH')
+EDSR_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.EDSR_FP32_PATH')
+EDSR_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.EDSR_FP16_PATH')
+CUSTOMER_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.CUSTOMER_FP32_PATH')
+TSENET_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.TSENET_FP16_PATH')
+SVP_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_FP32_PATH')
+SVP_INT8_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_INT8_PATH')
+SVP_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_FP16_PATH')
+SVP_SE_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_SE_FP16_PATH')
+FFMPEG_BIN_DIR=$(echo "$json_data" | jq -r '.pathes.FFMPEG_BIN_DIR')
 OUT_MD5_FILE=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test/testvideo_model_output_md5.txt
 TEST_MD5_FILE=/workspace/ivsr/test_cases/ffmpeg_ivsr_sdk_test/testvideo_input_md5.txt
 resolutions_all=(
@@ -259,7 +270,9 @@ function_test()
     case ${model_name} in
     BasicVSR)
         if [ ${model_type} = "fp32" ];then
-            model=${BasicVSR_PATH}/fp32/basicvsr_x2_opensource_release_dynamic.xml
+            model=${BasicVSR_FP32_PATH}
+        else
+            echo "Unknown BasicVSR model type: $model_type"
         fi
         model_num=0
         nif=3
@@ -269,7 +282,13 @@ function_test()
         rest_param="&extension=${EXTENSION}&op_xml=${OP_XML}&"
         ;;
     EDSR)
-        model=${EDSR_PATH}/edsr.xml
+        if [ ${model_type} = "fp32" ];then
+            model=${EDSR_FP32_PATH}
+        elif [ ${model_type} = "fp16" ];then
+            model=${EDSR_FP16_PATH}
+        else
+            echo "Unknown EDSR model type: $model_type"
+        fi
         model_num=2
         nif=1
         normalize_factor=255.0
@@ -277,7 +296,9 @@ function_test()
         resolution_list=("${resolutions_all[@]}")
         ;;
     CUSTOMER)
-        model=${CUSTOMER_PATH}/meta_dynamic_04_15.xml
+        if [ ${model_type} = "fp32" ];then
+            model=${CUSTOMER_FP32_PATH}
+        fi
         model_num=3
         nif=1
         normalize_factor=1.0
@@ -285,7 +306,11 @@ function_test()
         resolution_list=("${resolutions_all[@]}")
         ;;
     TSENET)
-        model=${CUSTOMER_PATH}/ETDS_tempOnC_M7C48_x2_t3_h1080_w1920_fp16.xml
+        if [ ${model_type} = "fp16" ];then
+            model=${TSENET_FP16_PATH}
+        else
+            echo "Unknown TSENET model type: $model_type"
+        fi
         model_num=4
         nif=1
         normalize_factor=1.0
@@ -294,11 +319,11 @@ function_test()
         ;;
     SVP)
         if [ ${model_type} = "fp32" ];then
-            model=${SVP_BASIC_PATH}/FP32/dunet.xml
+            model=${SVP_FP32_PATH}
         elif [ ${model_type} = "fp16" ];then
-            model=${SVP_BASIC_PATH}/FP16/dunet.xml
+            model=${SVP_FP16_PATH}
         else
-            model=${SVP_BASIC_PATH}/INT8-performance/dunet.xml
+            model=${SVP_INT8_PATH}
         fi
         model_num=1
         nif=1
@@ -308,7 +333,7 @@ function_test()
         ;;
     SVP_SE)
         if [ ${model_type} = "fp16" ];then
-            model=${SVP_SE_PATH}/fp16-dynamic-shape/qnet3m_16165.xml
+            model=${SVP_SE_FP16_PATH}
         else
             echo "Unknown SVP-SE model type: $model_type"
         fi
@@ -386,22 +411,46 @@ delete_testvideo()
 run()
 {
     echo "Start Function Test"
-    function_test BasicVSR fp32 CPU
-    function_test BasicVSR fp32 GPU
-    # function_test BasicVSR int8 CPU
-    # function_test BasicVSR int8 GPU
-    function_test EDSR fp32 CPU
-    function_test EDSR fp32 GPU
-    function_test CUSTOMER fp32 CPU
-    #function_test TSENET fp32 CPU
-    function_test SVP fp32 CPU
-    function_test SVP fp32 GPU
-    function_test SVP fp16 CPU
-    function_test SVP fp16 GPU
-    function_test SVP int8 CPU
-    function_test SVP int8 GPU
-    function_test SVP_SE fp16 CPU
-    function_test SVP_SE fp16 GPU
+    test_models=$(echo "$json_data" | jq -r '.test_models[]')
+    devices=$(echo "$json_data" | jq -r '.devices[]')
+    for cur_model in ${test_models}; do
+        for cur_device in ${devices}; do
+            case ${cur_model} in
+            BasicVSR)
+                function_test BasicVSR fp32 ${cur_device}
+                ;;
+            EDSR)
+                function_test EDSR fp32 ${cur_device}
+                function_test EDSR fp16 ${cur_device}
+                ;;
+            CUSTOMER)
+                if [ "$cur_device" = "GPU" ]; then
+                    echo "CUSTOMER model doesn't support GPU yet."
+                else
+                    function_test CUSTOMER fp32 ${cur_device}
+                fi
+                ;;
+            TSENET)
+                # if [ "$cur_device" = "GPU" ]; then
+                #     echo "CUSTOMER model doesn't support GPU yet."
+                # else
+                #     function_test TSENET fp16 ${cur_device}
+                # fi
+                ;;
+            SVP)
+                function_test SVP fp32 ${cur_device}
+                function_test SVP fp16 ${cur_device}
+                function_test SVP int8 ${cur_device}
+                ;;
+            SVP_SE)
+                function_test SVP_SE fp16 ${cur_device}
+                ;;
+            *)
+                echo "Unknown test model name: $cur_model"
+                ;;
+            esac
+        done
+    done
     delete_testvideo
     echo "Finish Function Test"
 

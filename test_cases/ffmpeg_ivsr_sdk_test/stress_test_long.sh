@@ -1,11 +1,23 @@
 #!/bin/bash
-MODEL_PATH=/workspace
-BasicVSR_PATH=${MODEL_PATH}/0_iVSR_v0.1_models/dynamic_models
-EDSR_PATH=${MODEL_PATH}
-CUSTOMER_PATH=${MODEL_PATH}/Meta_OV_models
-SVP_BASIC_PATH=${MODEL_PATH}/SVP_BASIC
-SVP_SE_PATH=${MODEL_PATH}/SVP_SE
-FFMPEG_BIN_DIR=/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg
+json_file="test_params.json"
+if [[ ! -f "$json_file" ]]; then
+  echo "$json_file does not exist!"
+  exit 1
+fi
+
+json_data=$(cat "$json_file")
+test_case=$(echo "$json_data" | jq -r '.test_cases')
+BasicVSR_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.BasicVSR_FP32_PATH')
+EDSR_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.EDSR_FP32_PATH')
+EDSR_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.EDSR_FP16_PATH')
+CUSTOMER_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.CUSTOMER_FP32_PATH')
+TSENET_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.TSENET_FP16_PATH')
+SVP_FP32_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_FP32_PATH')
+SVP_INT8_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_INT8_PATH')
+SVP_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_FP16_PATH')
+SVP_SE_FP16_PATH=$(echo "$json_data" | jq -r '.pathes.SVP_SE_FP16_PATH')
+FFMPEG_BIN_DIR=$(echo "$json_data" | jq -r '.pathes.FFMPEG_BIN_DIR')
+
 H=1080
 W=1920
 
@@ -35,7 +47,7 @@ generate_test_video(){
     fi
 }
 
-stress_test()
+stress_long_test()
 {
     cd ${FFMPEG_BIN_DIR}
     model_name=$1
@@ -45,7 +57,9 @@ stress_test()
     case ${model_name} in
     BasicVSR)
         if [ ${model_type} = "fp32" ];then
-            model=${BasicVSR_PATH}/fp32/basicvsr_x2_opensource_release_dynamic.xml
+            model=${BasicVSR_FP32_PATH}
+        else
+            echo "Unknown BasicVSR model type: $model_type"
         fi
         model_num=0
         nif=3
@@ -54,26 +68,45 @@ stress_test()
         rest_param="&extension=${EXTENSION}&op_xml=${OP_XML}&"
         ;;
     EDSR)
-        model=${EDSR_PATH}/edsr.xml
+        if [ ${model_type} = "fp32" ];then
+            model=${EDSR_FP32_PATH}
+        elif [ ${model_type} = "fp16" ];then
+            model=${EDSR_FP16_PATH}
+        else
+            echo "Unknown EDSR model type: $model_type"
+        fi
         model_num=2
         nif=1
         normalize_factor=255.0
         format=bgr24
         ;;
     CUSTOMER)
-        model=${CUSTOMER_PATH}/meta_dynamic_04_15.xml
+        if [ ${model_type} = "fp32" ];then
+            model=${CUSTOMER_FP32_PATH}
+        fi
         model_num=3
         nif=1
         normalize_factor=1.0
         format=yuv420p
         ;;
+    TSENET)
+        if [ ${model_type} = "fp16" ];then
+            model=${TSENET_FP16_PATH}
+        else
+            echo "Unknown TSENET model type: $model_type"
+        fi
+        model_num=4
+        nif=1
+        normalize_factor=1.0
+        format=bgr24
+        ;;
     SVP)
         if [ ${model_type} = "fp32" ];then
-            model=${SVP_BASIC_PATH}/FP32/dunet.xml
+            model=${SVP_FP32_PATH}
         elif [ ${model_type} = "fp16" ];then
-            model=${SVP_BASIC_PATH}/FP16/dunet.xml
+            model=${SVP_FP16_PATH}
         else
-            model=${SVP_BASIC_PATH}/INT8-performance/dunet.xml
+            model=${SVP_INT8_PATH}
         fi
         model_num=1
         nif=1
@@ -82,7 +115,7 @@ stress_test()
         ;;
     SVP_SE)
         if [ ${model_type} = "fp16" ];then
-            model=${SVP_SE_PATH}/fp16-dynamic-shape/qnet3m_16165.xml
+            model=${SVP_SE_FP16_PATH}
         else
             echo "Unknown SVP-SE model type: $model_type"
         fi
@@ -103,12 +136,12 @@ stress_test()
     exit_status=$?
     if [ $exit_status -ne 0 ]; then
         echo "Command terminated with exit status $exit_status."
-        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${width}x${height},result: Fail, error_info: IVSR Command Run Error" >> ${LOG_DIR}/stress_test_long_fail.log
-        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${width}x${height},result: Fail, error_info: IVSR Command Run Error" >> ${LOG_DIR}/stress_test_loop_total.log
+        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${W}x${H},result: Fail, error_info: IVSR Command Run Error" >> ${LOG_DIR}/stress_test_long_fail.log
+        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${W}x${H},result: Fail, error_info: IVSR Command Run Error" >> ${LOG_DIR}/stress_test_loop_total.log
     else
         end_time=`date +%s`
         duration=$[ $end_time - $start_time ]
-        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${width}x${height}, duration: ${duration}s, result: Pass" >> ${LOG_DIR}/stress_test_long_total.log
+        echo "test_case: stress_long_${model_name}_${model_type}_${device}_${W}x${H}, duration: ${duration}s, result: Pass" >> ${LOG_DIR}/stress_test_long_total.log
     fi
     if [ -f "${out_video_name}" ]; then
         rm ${out_video_name}
@@ -125,19 +158,46 @@ delete_testvideo()
 run()
 {
     echo "Start Streess Test(Long)"
-    stress_test BasicVSR fp32 CPU
-    stress_test BasicVSR fp32 GPU
-    # stress_test BasicVSR int8 CPU
-    # stress_test BasicVSR int8 GPU
-    stress_test EDSR fp32 CPU
-    stress_test EDSR fp32 GPU
-    stress_test CUSTOMER fp32 CPU
-    stress_test SVP fp32 CPU
-    stress_test SVP fp32 GPU
-    stress_test SVP fp16 CPU
-    stress_test SVP fp16 GPU
-    stress_test SVP_SE fp16 CPU
-    stress_test SVP_SE fp16 GPU
+    test_models=$(echo "$json_data" | jq -r '.test_models[]')
+    devices=$(echo "$json_data" | jq -r '.devices[]')
+    for cur_model in ${test_models}; do
+        for cur_device in ${devices}; do
+            case ${cur_model} in
+            BasicVSR)
+                stress_long_test BasicVSR fp32 ${cur_device}
+                ;;
+            EDSR)
+                stress_long_test EDSR fp32 ${cur_device}
+                stress_long_test EDSR fp16 ${cur_device}
+                ;;
+            CUSTOMER)
+                if [ "$cur_device" = "GPU" ]; then
+                    echo "CUSTOMER model doesn't support GPU yet."
+                else
+                    stress_long_test CUSTOMER fp32 ${cur_device}
+                fi
+                ;;
+            TSENET)
+                # if [ "$cur_device" = "GPU" ]; then
+                #     echo "CUSTOMER model doesn't support GPU yet."
+                # else
+                #     stress_long_test TSENET fp16 ${cur_device}
+                # fi
+                ;;
+            SVP)
+                stress_long_test SVP fp32 ${cur_device}
+                stress_long_test SVP fp16 ${cur_device}
+                stress_long_test SVP int8 ${cur_device}
+                ;;
+            SVP_SE)
+                stress_long_test SVP_SE fp16 ${cur_device}
+                ;;
+            *)
+                echo "Unknown test model name: $cur_model"
+                ;;
+            esac
+        done
+    done
     delete_testvideo
     echo "Finish Streess Test(Long)"
 
