@@ -4,6 +4,7 @@ if command -v jq > /dev/null 2>&1; then
     echo "jq is already installed."
 else
     echo "jq is not installed. Try to install it."
+    apt-get update
     apt-get install -y jq
     if command -v jq > /dev/null 2>&1; then
         echo "jq has been successfully installed."
