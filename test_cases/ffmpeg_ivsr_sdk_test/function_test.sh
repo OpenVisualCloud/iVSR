@@ -329,7 +329,7 @@ function_test()
         nif=1
         normalize_factor=1.0
         format=bgr24
-        resolution_list=("${resolutions_8align[@]}")
+        resolution_list=("${resolutions_all[@]}")
         ;;
     SVP_SE)
         if [ ${model_type} = "fp16" ];then
