@@ -23,4 +23,3 @@
 - Only 8-bit data is supported in vsr_sample or iVSR FFmpeg plugin.
 - Enhanced BasicVSR model works only on OpenVINO 2022.3 with the patches applied.
 - The Enhanced BasicVSR model supports only input sizes with widths that are divisible by 32.
-- The SVP model supports only input sizes where both the width and height are divisible by 32,.
