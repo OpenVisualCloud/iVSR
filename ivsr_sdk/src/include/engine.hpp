@@ -30,7 +30,7 @@
 
 using namespace std;
 
-template<typename Derived>
+template <typename Derived>
 class engine {
 private:
     // Function objects for type-erased calls to interface methods
@@ -43,10 +43,15 @@ public:
     // Template constructor binds the provided methods of the derived engine implementation
     engine(Derived* derived)
         : _derived(derived),
-          init_func([=]() -> IVSRStatus { return _derived->init_impl(); }),
-          run_func([=](InferTask::Ptr task) -> IVSRStatus { return _derived->run_impl(task); }),
-          wait_all_func([=]() { _derived->wait_all_impl(); })
-    {}
+          init_func([=]() -> IVSRStatus {
+              return _derived->init_impl();
+          }),
+          run_func([=](InferTask::Ptr task) -> IVSRStatus {
+              return _derived->run_impl(task);
+          }),
+          wait_all_func([=]() {
+              _derived->wait_all_impl();
+          }) {}
 
     engine() = default;
 
@@ -71,7 +76,9 @@ public:
         wait_all_func();
     }
 
-    Derived* get_impl() const { return _derived; }
+    Derived* get_impl() const {
+        return _derived;
+    }
 
     IVSRStatus create_infer_requests(size_t requests_num) {
         return _derived->create_infer_requests_impl(requests_num);

@@ -188,42 +188,59 @@ std::vector<size_t> convert_string_to_vector(const std::string& input) {
     return result;
 }
 
-struct ivsr{
+struct ivsr {
     engine<ov_engine> inferEngine;
-    IVSRThread::IVSRThreadExecutor *threadExecutor;
-    std::unordered_map<std::string,const char*> vsr_config;
+    IVSRThread::IVSRThreadExecutor* threadExecutor;
+    std::unordered_map<std::string, std::string> vsr_config;
     PatchConfig patchConfig;
     bool patchSolution;
-    std::vector<size_t> input_data_shape; //shape of input data
-    ivsr():threadExecutor(nullptr),patchSolution(false){}
+    std::vector<size_t> input_data_shape;  // shape of input data
+
+    ivsr()
+        : threadExecutor(nullptr),
+          patchSolution(false) {}
+
+    // Define a constructor to initialize engine and other members if needed
+    ivsr(engine<ov_engine> engine,
+         IVSRThread::IVSRThreadExecutor* executor,
+         const std::unordered_map<std::string, std::string>& config,
+         const PatchConfig& patch,
+         std::vector<size_t> shape,
+         bool sol = false)
+        : inferEngine(engine),
+          threadExecutor(executor),
+          vsr_config(config),
+          patchConfig(patch),
+          input_data_shape(std::move(shape)),
+          patchSolution(sol) {}
 };
 
-IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
-    if(configs == nullptr || handle == nullptr){
-        ivsr_status_log(IVSRStatus::GENERAL_ERROR,"in ivsr_init");
+IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
+    if (configs == nullptr || handle == nullptr) {
+        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_init");
         return IVSRStatus::GENERAL_ERROR;
     }
 
-    (*handle) = new ivsr();
-
-    //TODO: replace w/ parseConfig() ??
-    // 1.parse input config
-    std::string model = "", device = "", batch = "", infer_precision = "f32";
-    std::string verbose = "", custom_lib = "", cldnn_config = "";
-    std::vector<size_t> reshape_settings;
-    std::vector<size_t> reso;
+    // Configuration variables
+    std::string model, device, batch, infer_precision = "f32";
+    std::string verbose, custom_lib, cldnn_config;
+    std::vector<size_t> reshape_settings, reso;
     size_t frame_width = 0, frame_height = 0;
-    int reshape_dim =0, reshape_h =0, reshape_w = 0;
-    while(configs!=nullptr){
+    int reshape_dim = 0, reshape_h = 0, reshape_w = 0;
+    std::unordered_map<std::string, std::string> config_map;
+    size_t infer_request_num = 1;  // default infer_request_num set to 1
+
+    // Parse input config
+    while (configs != nullptr) {
         IVSRStatus unsupported_status = IVSRStatus::OK;
-        std::string unsupported_output = "";
-        switch(configs->key){
+        std::string unsupported_output;
+
+        switch (configs->key) {
             case IVSRConfigKey::INPUT_MODEL:
                 model = std::string(configs->value);
-                if(!checkFile(model)){
+                if (!checkFile(model)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output.append("INPUT_MODEL").append("=").append(configs->value);
-                    return IVSRStatus::UNSUPPORTED_CONFIG;
+                    unsupported_output = "INPUT_MODEL=" + std::string(configs->value);
                 }
                 std::cout << "[INFO] " << "Model Path:" << model << std::endl;
                 break;
@@ -239,30 +256,28 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 break;
             case IVSRConfigKey::CUSTOM_LIB:
                 custom_lib = configs->value;
-                if(!checkFile(custom_lib)){  // file not exists, inform out
+                if (!checkFile(custom_lib)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output.append("CUSTOM_LIB").append("=").append(configs->value);
-                    return IVSRStatus::UNSUPPORTED_CONFIG;
+                    unsupported_output = "CUSTOM_LIB=" + std::string(configs->value);
                 }
                 break;
             case IVSRConfigKey::CLDNN_CONFIG:
                 cldnn_config = configs->value;
-                if(!checkFile(cldnn_config)){
+                if (!checkFile(cldnn_config)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output.append("CLDNN_CONFIG").append("=").append(configs->value);
-                    return IVSRStatus::UNSUPPORTED_CONFIG;
+                    unsupported_output = "CLDNN_CONFIG=" + std::string(configs->value);
                 }
                 break;
             case IVSRConfigKey::PRECISION:
                 infer_precision = configs->value;
-                if(device.find("GPU") != std::string::npos){
-                    if(infer_precision.compare("f32") != 0 && infer_precision.compare("f16") != 0){
-                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"for PRECISION=");
+                if (device.find("GPU") != std::string::npos) {
+                    if (infer_precision != "f32" && infer_precision != "f16") {
+                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
                         return IVSRStatus::UNSUPPORTED_CONFIG;
                     }
-                }else{
-                    if(infer_precision.compare("f32") != 0 && infer_precision.compare("bf16") != 0){
-                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"for PRECISION=");
+                } else {
+                    if (infer_precision != "f32" && infer_precision != "bf16") {
+                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
                         return IVSRStatus::UNSUPPORTED_CONFIG;
                     }
                 }
@@ -272,168 +287,187 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle){
                 reshape_dim = reshape_settings.size();
                 reshape_h = reshape_settings[reshape_dim - 2];
                 reshape_w = reshape_settings[reshape_dim - 1];
-                if (reshape_h % 2 !=0 || reshape_w %2 !=0){
-                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE,configs->value);
+                if (reshape_h % 2 != 0 || reshape_w % 2 != 0) {
+                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, configs->value);
                     return IVSRStatus::UNSUPPORTED_SHAPE;
                 }
                 break;
             case IVSRConfigKey::INPUT_RES:
-                //in format "<width>,<height>"
                 reso = convert_string_to_vector(configs->value);
                 frame_width  = reso[0];
                 frame_height = reso[1];
                 break;
+            case IVSRConfigKey::INFER_REQ_NUMBER:
+                try {
+                    auto num = std::stoul(configs->value);
+                    if (num > infer_request_num)
+                        infer_request_num = num;
+                    std::cout << "[INFO] Infer request num: " << infer_request_num << std::endl;
+                } catch (const std::invalid_argument& e) {
+                    std::cerr << "[ERROR] Invalid argument: " << configs->value << std::endl;
+                } catch (const std::out_of_range& e) {
+                    std::cerr << "[ERROR] Out of range: " << configs->value << std::endl;
+                }
+                break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
-                unsupported_output.append(std::to_string(configs->key));
+                unsupported_output = std::to_string(configs->key);
                 break;
         }
-        ivsr_status_log(unsupported_status, unsupported_output.c_str());
 
+        ivsr_status_log(unsupported_status, unsupported_output.c_str());
         configs = configs->next;
     }
-    if(!check_engine_config(model, device)) {
-        return IVSRStatus::UNSUPPORTED_CONFIG;
-    }
-    if(frame_width == 0 || frame_height == 0) {
-        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set INPUT_RES!");
+
+    if (!check_engine_config(model, device)) {
         return IVSRStatus::UNSUPPORTED_CONFIG;
     }
 
-    /**
-     * Below code only is for OpenVINO engine
-    */
-    // 2.parse config for inference engine
+    if (frame_width == 0 || frame_height == 0) {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "please set INPUT_RES!");
+        return IVSRStatus::UNSUPPORTED_CONFIG;
+    }
+
+    // Parse config for the inference engine
     std::map<std::string, ov::AnyMap> engine_configs;
-    parse_engine_config(engine_configs,device,infer_precision,cldnn_config);
+    parse_engine_config(engine_configs, device, infer_precision, cldnn_config);
 
-    // 3.construct and initialization
-    // - initialize inference engine
-    (*handle)->inferEngine = {new ov_engine(device, model, custom_lib, engine_configs, reshape_settings)};
-    IVSRStatus status;
-    status = (*handle)->inferEngine.init();
-    if(status != IVSRStatus::OK){
+    // Initialize inference engine
+    auto ovEng = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings);
+    IVSRStatus status = ovEng->init();
+    if (status != IVSRStatus::OK) {
         ivsr_status_log(status, "in ivsr_init");
         return IVSRStatus::UNSUPPORTED_SHAPE;
     }
-    // -construct IVSRThreadExecutor object
-    IVSRThread::Config executorConfig;
-    (*handle)->threadExecutor = new IVSRThread::IVSRThreadExecutor(executorConfig, (*handle)->inferEngine.get_impl());
 
-    // -construct patch config
+    auto res = ovEng->create_infer_requests(infer_request_num);
+    if (res < 0) {
+        std::cout << "[ERROR]: Failed to create infer requests!\n";
+        return IVSRStatus::GENERAL_ERROR;
+    }
+
+    // Construct IVSRThreadExecutor object
+    IVSRThread::Config executorConfig{"ivsr_thread_executor", 8};
+    auto executor = new IVSRThread::IVSRThreadExecutor(executorConfig, ovEng);
+
+    // Construct patch config
     size_t input_dims = 0;
-    (*handle)->inferEngine.get_attr("input_dims", input_dims);
+    ovEng->get_attr("input_dims", input_dims);
     ov::Shape model_inputs, model_outputs;
-    (*handle)->inferEngine.get_attr("model_inputs", model_inputs); // 1,3,3,1080,1920 (400,700)
-    (*handle)->inferEngine.get_attr("model_outputs", model_outputs); // 1,3,3,2160,3840 (800,1400)
+    ovEng->get_attr("model_inputs", model_inputs);
+    ovEng->get_attr("model_outputs", model_outputs);
 
-    // --set patch configs
+    PatchConfig patchConfig;
     int m_input_width = *(model_inputs.end() - 1);
     int m_input_height = *(model_inputs.end() - 2);
     int nif = *(model_inputs.end() - 4);
     int m_output_width = *(model_outputs.end() - 1);
-    (*handle)->patchConfig.scale = m_output_width / m_input_width; // Note: do not support fractional SR
-    (*handle)->patchConfig.patchHeight = m_input_height;
-    (*handle)->patchConfig.patchWidth = m_input_width;
-    (*handle)->patchConfig.dims = input_dims;
-    (*handle)->patchConfig.nif = nif;
+    patchConfig.scale = m_output_width / m_input_width;
+    patchConfig.patchHeight = m_input_height;
+    patchConfig.patchWidth = m_input_width;
+    patchConfig.dims = input_dims;
+    patchConfig.nif = nif;
+
 #ifdef ENABLE_LOG
-    std::cout << "[Trace]: " << (*handle)->patchConfig << std::endl;
+    std::cout << "[Trace]: " << patchConfig << std::endl;
 #endif
 
-    // generate input data shape
-    std::vector<size_t>& input_shape = (*handle)->input_data_shape;
-    //model input res might not be the same as input frame res
+    // Generate input data shape
+    std::vector<size_t> input_shape;
     std::transform(model_inputs.begin(), model_inputs.end(), std::back_inserter(input_shape),
                    [](size_t val) { return val; });
     input_shape[input_shape.size() - 1] = frame_width;
     input_shape[input_shape.size() - 2] = frame_height;
 
+    // Use the parameterized constructor
+    *handle = new ivsr(ovEng, executor, config_map, patchConfig, std::move(input_shape));
     return IVSRStatus::OK;
 }
 
-IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb){
-    if(input_data == nullptr){
-        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_process");
+IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb) {
+    if (input_data == nullptr) {
+        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_process - input_data is nullptr");
         return IVSRStatus::GENERAL_ERROR;
     }
 
-    try{
+    try {
         std::vector<int> int_shape;
-        std::transform(handle->input_data_shape.begin(), handle->input_data_shape.end(), std::back_inserter(int_shape),
-                       [](size_t val) -> int { return static_cast<int>(val); });
+        int_shape.reserve(handle->input_data_shape.size());  // Reserve space for efficiency
+        std::transform(handle->input_data_shape.begin(),
+                       handle->input_data_shape.end(),
+                       std::back_inserter(int_shape),
+                       [](size_t val) -> int {
+                           return static_cast<int>(val);
+                       });
 
-        // determine whether apply patch solution or not
-        if(handle->patchConfig.patchHeight < *(int_shape.end()-2) ||
-           handle->patchConfig.patchWidth  < *(int_shape.end()-1)) {
+        // Determine whether to apply the patch solution
+        if (handle->patchConfig.patchHeight < int_shape[int_shape.size() - 2] ||
+            handle->patchConfig.patchWidth < int_shape[int_shape.size() - 1]) {
             handle->patchSolution = true;
         }
 
-        // smart patch inference
-        SmartPatch* smartPatch = new SmartPatch(handle->patchConfig, input_data, output_data, int_shape, handle->patchSolution);
-        // -prepare data
-        auto res = smartPatch->generatePatch();
-        if(res == -1){
-            delete smartPatch;
-            ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in Smart Patch");
+        // Smart patch inference using a smart pointer for automatic memory management
+        std::unique_ptr<SmartPatch> smartPatch(
+            new SmartPatch(handle->patchConfig, input_data, output_data, int_shape, handle->patchSolution)
+        );
+
+        // Prepare data
+        int res = smartPatch->generatePatch();
+        if (res == -1) {
+            ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in SmartPatch::generatePatch");
             return IVSRStatus::UNKNOWN_ERROR;
         }
+
         auto patchList = smartPatch->getInputPatches();
         auto outputPatchList = smartPatch->getOutputPatches();
 
 #ifdef ENABLE_PERF
-    auto totalStartTime = Time::now();
+        auto totalStartTime = Time::now();
 #endif
 
-    // create infer requests based on patch list size
-    if (patchList.size() > handle->inferEngine.get_infer_requests_size()) {
-        auto res = handle->inferEngine.create_infer_requests(patchList.size());
-        if (res == IVSRStatus::GENERAL_ERROR) {
-            std::cout << "[ERROR]: " << "Failed to creat infer requests!\n";
-            delete smartPatch;
-            return IVSRStatus::GENERAL_ERROR;
+        // Create infer requests based on patch list size
+        size_t required_infer_requests = patchList.size();
+        if (required_infer_requests > handle->inferEngine.get_infer_requests_size()) {
+            auto res = handle->inferEngine.create_infer_requests(required_infer_requests);
+            if (res < 0) {
+                std::cout << "[ERROR]: Failed to create infer requests!\n";
+                return IVSRStatus::GENERAL_ERROR;
+            }
         }
-    }
 
-	// -get data into infer task
-        int idx = 0;
-	for(; idx < patchList.size(); idx++ ){
+        // Get data into infer task
+        for (int idx = 0; idx < patchList.size(); ++idx) {
 #ifdef ENABLE_LOG
-            std::cout << "[Trace]: " << "ivsr_process on patch: " << idx <<  std::endl;
+            std::cout << "[Trace]: ivsr_process on patch: " << idx << std::endl;
 #endif
+            std::shared_ptr<InferTask> task = handle->threadExecutor->CreateTask(
+                patchList[idx], outputPatchList[idx], InferFlag::AUTO);
+            handle->threadExecutor->Enqueue(task);
+        }
 
-	    std::shared_ptr<InferTask> task = handle->threadExecutor->CreateTask(patchList[idx], outputPatchList[idx], InferFlag::AUTO);
-        handle->threadExecutor->Enqueue(task);
-    }
+        // Wait for all tasks to finish
+        handle->threadExecutor->wait_all(required_infer_requests);
 
-	// -wait for all the tasks finish
-        handle->threadExecutor->wait_all(patchList.size());
 #ifdef ENABLE_PERF
-        auto duration = get_duration_ms_till_now(totalStartTime);
-        std::cout << "[PERF] " << "Patch inference with memory copy - Latency: " << double_to_string(duration) <<"ms"<<std::endl;
-        std::cout << "[PERF] " << "Patch inference with memory copy - Throughput: " << double_to_string(handle->patchConfig.nif* 1000.0 / duration) <<"FPS"<<std::endl;
+        double duration = get_duration_ms_till_now(totalStartTime);
+        std::cout << "[PERF] Patch inference with memory copy - Latency: "
+                  << double_to_string(duration) << "ms" << std::endl;
+        std::cout << "[PERF] Patch inference with memory copy - Throughput: "
+                  << double_to_string(handle->patchConfig.nif * 1000.0 / duration) << "FPS" << std::endl;
 #endif
-// #ifdef ENABLE_PERF
-// 	// -get total duration for all tasks
-// 	      double totalDuration = handle->threadExecutor->get_duration_in_milliseconds();
-//         double fps = 3 * 1000.0/totalDuration;
 
-// 	      std::cout << "All tasks Total Latency for One Nig: " << double_to_string(totalDuration) <<"ms"<<std::endl;
-//         std::cout << "All tasks in One Nig Throughput : " << double_to_string(fps) <<"FPS"<<std::endl;
-// #endif
-	// -restore output patches to images
+        // Restore output patches to images
         res = smartPatch->restoreImageFromPatches();
-        if(res == -1){
-            ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in Smart Patch");
+        if (res == -1) {
+            ivsr_status_log(IVSRStatus::UNKNOWN_ERROR, "in SmartPatch::restoreImageFromPatches");
             return IVSRStatus::UNKNOWN_ERROR;
         }
 
-        delete smartPatch;
-        // notify user
+        // Notify user
         cb->ivsr_cb(cb->args);
 
-    }catch(exception e){
-        std::cout << "Error in ivsr_process" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "Error in ivsr_process: " << e.what() << std::endl;
         ivsr_status_log(IVSRStatus::EXCEPTION_ERROR, e.what());
         return IVSRStatus::UNKNOWN_ERROR;
     }
@@ -441,6 +475,45 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
     return IVSRStatus::OK;
 }
 
+IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb) {
+    if (input_data == nullptr) {
+        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_process - input_data is nullptr");
+        return IVSRStatus::GENERAL_ERROR;
+    }
+
+    try {
+        std::vector<int> int_shape;
+        int_shape.reserve(handle->input_data_shape.size());  // Reserve space for efficiency
+        std::transform(handle->input_data_shape.begin(),
+                       handle->input_data_shape.end(),
+                       std::back_inserter(int_shape),
+                       [](size_t val) -> int {
+                           return static_cast<int>(val);
+                       });
+
+        // Determine whether to apply the patch solution
+        if (handle->patchConfig.patchHeight < int_shape[int_shape.size() - 2] ||
+            handle->patchConfig.patchWidth < int_shape[int_shape.size() - 1]) {
+            handle->patchSolution = true;
+        }
+
+        // TODO: Now fallback to ivsr_process api when patch solution is needed
+        if (handle->patchSolution) {
+            return ivsr_process(handle, input_data, output_data, cb);
+        }
+
+        // Get data into infer task
+        std::shared_ptr<InferTask> task =
+            handle->threadExecutor->CreateTask(input_data, output_data, InferFlag::AUTO, cb);
+        handle->threadExecutor->Enqueue(task);
+    } catch (const std::exception& e) {
+        std::cout << "Error in ivsr_process: " << e.what() << std::endl;
+        ivsr_status_log(IVSRStatus::EXCEPTION_ERROR, e.what());
+        return IVSRStatus::UNKNOWN_ERROR;
+    }
+
+    return IVSRStatus::OK;
+}
 
 IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs){
     if(configs == nullptr){

@@ -43,6 +43,7 @@ const std::string keys =
     "{scale_factor      |2| Optional. The ratio of the size of the image before scaling (original size) to the size of the image after scaling (new size).}"
     "{precision         |f32| Optional. For inference precision.fp32:f32, fp16:f16, bf16:bf16}"
     "{reshape_values    | | Optional. Reshape network to fit the input image size. e.g. --reshape_values=\"(1,3,720,1280)\"}"
+    "{num_infer_req     | | Optional. Number of infer request number.}"
    ;
 
 bool checkPath(const std::string& path){
@@ -188,6 +189,8 @@ bool commandLineCheck(int argc, char**argv,std::string keys){
     return true;
 }
 
+using IVSRFunction = std::function<IVSRStatus(ivsr_handle, char*, char*, ivsr_cb_t*)>;
+
 int main(int argc, char** argv){
     // -------- Parsing and validation of input arguments --------
     cv::CommandLineParser parser(argc, argv, keys);
@@ -279,6 +282,9 @@ int main(int argc, char** argv){
     auto reshape_settings = parser.get<std::string>("reshape_values");
     if (!reshape_settings.empty()) add_config(IVSRConfigKey::RESHAPE_SETTINGS, reshape_settings.c_str());
 
+    auto nireq = parser.get<std::string>("num_infer_req");
+    if (!nireq.empty()) add_config(IVSRConfigKey::INFER_REQ_NUMBER, nireq.c_str());
+
     // in format "<width>,<height>"
     std::string input_res = std::to_string(frameWidth) + "," + std::to_string(frameHeight);
     add_config(IVSRConfigKey::INPUT_RES, input_res.c_str());
@@ -340,18 +346,20 @@ int main(int argc, char** argv){
 #ifdef ENABLE_PERF
     auto totalStartTime = Time::now();
 #endif
-    for (; id < inputDataList.size() && id < outputDataList.size();id++){
+
+    IVSRFunction process_fn = nireq.empty() ? ivsr_process : ivsr_process_async;
+    for (; id < inputDataList.size() && id < outputDataList.size(); id++) {
         auto inputImg = inputDataList[id];
         auto outputImg = outputDataList[id];
         ivsr_cb_t cb;
         auto startTime = Time::now();
-        callback_args cb_args(0,nif,startTime);
+        callback_args cb_args(0, nif, startTime);
         cb.ivsr_cb = completion_callback;
         cb.args = (void*)(&cb_args);
         // 4. inference
-        auto result = ivsr_process(handle, (char *)inputImg.data, (char *)outputImg.data, &cb);
-        if(result < 0){
-            std::cout <<"Failed to process the inference on input data seq." << id <<std::endl;
+        IVSRStatus result = process_fn(handle, (char*)inputImg.data, (char*)outputImg.data, &cb);
+        if (result < 0) {
+            std::cout << "Failed to process the inference on input data seq." << id << std::endl;
         }
     }
 
@@ -365,36 +373,37 @@ int main(int argc, char** argv){
     std::cout << "[PERF] " << "Total latency for all input groups: " << double_to_string(duration) <<"ms"<<std::endl;
     std::cout << "[PERF] " << "Average throughput for all input groups: " << double_to_string(nig * nif * 1000.0 / duration) <<"FPS"<<std::endl;
 #endif
-
     std::cout << "[INFO] " << "Inference finished" << std::endl;
 
     // save outputs
-    if(save_predictions) {
-        if(save_path == ""){
+    if (save_predictions) {
+        if (save_path == "") {
             std::cout << "save_path is needed!" << std::endl;
             return -1;
         }
-        std::cout << "[INFO] " << " Saving outputs to path: " << save_path <<std::endl;
-        for (size_t idx = 0; idx < outputDataList.size(); idx++){
+        std::cout << "[INFO] "
+                  << " Saving outputs to path: " << save_path << std::endl;
+        for (size_t idx = 0; idx < outputDataList.size(); idx++) {
             // 5. post process and save outputs
             auto outputImg = outputDataList[idx];
-            outputImg.convertTo(outputImg, CV_8U, 255.0/normalize_factor);
+            outputImg.convertTo(outputImg, CV_8U, 255.0 / normalize_factor);
             int nchwSize[] = {nif, 3, oriHeight * scaleFactor, oriWidth * scaleFactor};
-            cv::Mat outputNCHW(4, nchwSize, CV_8U, (void *)outputImg.data);
+            cv::Mat outputNCHW(4, nchwSize, CV_8U, (void*)outputImg.data);
             std::vector<cv::Mat> outMatList;
             imagesFromBlob(outputNCHW, outMatList);
 
             // save group
-            for(int i = 0; i < nif; i ++){
+            for (int i = 0; i < nif; i++) {
                 std::string filePath = save_path + "/" + filePathList[idx * nif + i];
 #ifdef ENABLE_LOG
-            std::cout << "[Trace]: " << "Saving image: " << filePath <<std::endl;
+                std::cout << "[Trace]: "
+                          << "Saving image: " << filePath << std::endl;
 #endif
                 cv::imwrite(filePath, outMatList[i]);
-
             }
         }
     }
+
     //release resources
     res = ivsr_deinit(handle);
     if(res < 0){

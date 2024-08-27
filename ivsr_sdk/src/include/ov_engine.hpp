@@ -29,16 +29,17 @@
 #include "openvino/pass/make_stateful.hpp"
 #include "openvino/core/layout.hpp"
 
-typedef std::function<void(size_t id)>
-    CallbackFunction;
+typedef std::function<void(size_t id)> CallbackFunction;
 class inferReqWrap final {
 public:
     using Ptr = std::shared_ptr<inferReqWrap>;
-    explicit inferReqWrap(ov::CompiledModel& model, size_t id,CallbackFunction callback)
-    : id_(id), request_(model.create_infer_request()),callback_(callback) {}
+    explicit inferReqWrap(ov::CompiledModel& model, size_t id, CallbackFunction callback)
+        : id_(id),
+          request_(model.create_infer_request()),
+          callback_(callback) {}
 
     void start_async() {
-	startTime_ = Time::now();
+        startTime_ = Time::now();
         request_.start_async();
     }
 
@@ -82,9 +83,10 @@ public:
     void set_callback(std::function<void(std::exception_ptr)> callback) {
         request_.set_callback(std::move(callback));
     }
-    void call_back(){
+    void call_back() {
         callback_(id_);
     }
+
 private:
     ov::InferRequest request_;
     size_t id_;
@@ -92,7 +94,6 @@ private:
     Time::time_point endTime_;
     CallbackFunction callback_;
 };
-
 
 class ov_engine : public engine<ov_engine> {
 public:
@@ -107,7 +108,7 @@ public:
           custom_lib_(custom_lib),
           configs_(configs),
           reshape_settings_(reshape_settings) {
-        //init();
+        // init();
     }
 
     IVSRStatus init_impl();
@@ -148,7 +149,8 @@ public:
     inferReqWrap::Ptr get_idle_request() {
         std::unique_lock<std::mutex> lock(mutex_);
 #ifdef ENABLE_LOG
-        std::cout << "[Trace]: " << "idleIds size: " <<idleIds_.size() << std::endl;
+        std::cout << "[Trace]: "
+                  << "idleIds size: " << idleIds_.size() << std::endl;
 #endif
         cv_.wait(lock, [this] {
             return idleIds_.size() > 0;
@@ -157,18 +159,22 @@ public:
         idleIds_.pop();
         return request;
     }
-    void put_idle_request(size_t id){
+
+    void put_idle_request(size_t id) {
         std::unique_lock<std::mutex> lock(mutex_);
         idleIds_.push(id);
 #ifdef ENABLE_LOG
-        std::cout << "[Trace]: " << "put_idle_request: idleIds size: " << idleIds_.size() << std::endl;
+        std::cout << "[Trace]: "
+                  << "put_idle_request: idleIds size: " << idleIds_.size() << std::endl;
 #endif
         cv_.notify_one();
     }
 
     void wait_all_impl() {
 #ifdef ENABLE_LOG
-        std::cout << "[Trace]: " << "ov_engine wait_all: " << "idleIds_ size:" << idleIds_.size() << " requests_ size:" << requests_.size() << std::endl;
+        std::cout << "[Trace]: "
+                  << "ov_engine wait_all: "
+                  << "idleIds_ size:" << idleIds_.size() << " requests_ size:" << requests_.size() << std::endl;
 #endif
         std::unique_lock<std::mutex> lock(mutex_);
         cv_.wait(lock, [this] {
@@ -182,7 +188,7 @@ public:
         return requests_.size();
     }
 
-    ~ov_engine(){
+    ~ov_engine() {
         requests_.clear();
     }
 
@@ -192,7 +198,7 @@ private:
     std::vector<inferReqWrap::Ptr> requests_;
     std::mutex mutex_;
     std::condition_variable cv_;
-    //configurations for openvino instances.
+    // configurations for openvino instances.
     std::map<std::string, ov::AnyMap> configs_;
     ov::Core instance_;
     ov::CompiledModel compiled_model_;

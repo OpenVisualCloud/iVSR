@@ -124,43 +124,50 @@ IVSRStatus ov_engine::init_impl()
 }
 
 IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
-    //construct the input tensor
-    if(task->inputPtr_ == nullptr || task->outputPtr_ == nullptr) {
-        std::cout << "[Error]: " << "invalid input buffer pointer" << std::endl;
+    // construct the input tensor
+    if (task->inputPtr_ == nullptr || task->outputPtr_ == nullptr) {
+        std::cout << "[Error]: "
+                  << "invalid input buffer pointer" << std::endl;
         return GENERAL_ERROR;
     }
     auto inferReq = get_idle_request();
 
-    inferReq->set_callback([wp = std::weak_ptr<inferReqWrap>(inferReq),task](std::exception_ptr ex) {
+    inferReq->set_callback([wp = std::weak_ptr<inferReqWrap>(inferReq), task](std::exception_ptr ex) {
         auto request = wp.lock();
 #ifdef ENABLE_PERF
-	request->end_time();
+        request->end_time();
         auto latency = request->get_execution_time_in_milliseconds();
-        size_t frame_num = (request->get_input_tensor()).get_shape()[(request->get_input_tensor().get_shape()).size()-4];
-        std::cout << "[PERF] " << "Inference Latency: " << latency << "ms, Throughput: " << double_to_string(frame_num * 1000.0 / latency) << "FPS" << std::endl;
+        size_t frame_num =
+            (request->get_input_tensor()).get_shape()[(request->get_input_tensor().get_shape()).size() - 4];
+        std::cout << "[PERF] "
+                  << "Inference Latency: " << latency
+                  << "ms, Throughput: " << double_to_string(frame_num * 1000.0 / latency) << "FPS" << std::endl;
 #endif
 
-        if(ex) {
+        if (ex) {
 #ifdef ENABLE_LOG
-        std::cout << "[Trace]: " << "Exception in infer request callback " << std::endl;
+            std::cout << "[Trace]: "
+                      << "Exception in infer request callback " << std::endl;
 #endif
-            try{
+            try {
                 // std::rethrow_exception(ex);
                 throw ex;
-            } catch(const std::exception& e) {
+            } catch (const std::exception& e) {
                 std::cout << "Caught exception \"" << e.what() << "\"\n";
             }
         }
         auto cbTask = task;
 
         request->call_back();
-        //call application callback function
-	cbTask->_callbackQueue();
+        // call application callback function
+        cbTask->_callbackFunction(cbTask);
     });
 
 #ifdef ENABLE_LOG
-    std::cout << "[Trace]: " << "input: " << input_.get_element_type().get_type_name() << " " << input_.get_shape() << std::endl;
-    std::cout << "[Trace]: " << "output: " << output_.get_element_type().get_type_name() << " " << output_.get_shape() << std::endl;
+    std::cout << "[Trace]: "
+              << "input: " << input_.get_element_type().get_type_name() << " " << input_.get_shape() << std::endl;
+    std::cout << "[Trace]: "
+              << "output: " << output_.get_element_type().get_type_name() << " " << output_.get_shape() << std::endl;
 #endif
 
     ov::Tensor input_tensor(input_.get_element_type(), input_.get_shape(), task->inputPtr_);
@@ -171,7 +178,8 @@ IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
     inferReq->start_async();
 
 #ifdef ENABLE_LOG
-    std::cout << "[Trace]: " << "ov_engine run: start task inference" << std::endl;
+    std::cout << "[Trace]: "
+              << "ov_engine run: start task inference" << std::endl;
 #endif
 
     return OK;
@@ -179,14 +187,16 @@ IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
 
 IVSRStatus ov_engine::create_infer_requests_impl(size_t requests_num) {
     if (requests_num < requests_.size()) {
-        std::cout << "[ERROR]: " << "please pass correct requests num.\n";
+        std::cout << "[ERROR]: "
+                  << "please pass correct requests num.\n";
         return GENERAL_ERROR;
     }
 
     for (int id = requests_.size(); id < requests_num; ++id) {
-        requests_.push_back(std::make_shared<inferReqWrap>(compiled_model_ ,id,std::bind(&ov_engine::put_idle_request,
-                                                                        this,
-                                                                        std::placeholders::_1)));
+        requests_.push_back(
+            std::make_shared<inferReqWrap>(compiled_model_,
+                                           id,
+                                           std::bind(&ov_engine::put_idle_request, this, std::placeholders::_1)));
         idleIds_.push(id);
     }
 
