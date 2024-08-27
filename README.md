@@ -5,7 +5,7 @@
     - [iVSR Components](#13-ivsr-components)
     - [Capabilities of iVSR](#14-capabilities-of-ivsr)
 2. [Setup iVSR env on linux](#2-setup-ivsr-env-on-linux)
-    - [Install GPU in kernel space ](#21-optional-install-gpu-kernel-packages)
+    - [Install GPU kernel packages](#21-optional-install-gpu-kernel-packages)
     - [Install dependencies and build iVSR manually](#22-install-dependencies-and-build-ivsr-manually)
     - [Install dependencies and build iVSR by scripts](#23-install-dependencies-and-build-ivsr-by-scripts)
     - [Install dependencies and build iVSR by Docker file](#24-install-dependencies-and-build-ivsr-by-docker-file)
@@ -58,21 +58,24 @@ Currently, iVSR offers two AI media processing functionalities: Video Super Reso
 ### 1.4.1 Video Super Resolution (VSR)
 Video Super Resolution (VSR) is a technique extensively employed in the AI media enhancement domain to upscale low-resolution videos to high-resolution. iVSR supports `Enhanced BasicVSR`, `Enhanced EDSR`, `TSENet`, and has the capability to be extended to support additional models.
 
-- ####  i. Enhanced BasicVSR
-    `BasicVSR` is a publicly available AI-based VSR algorithm. For more details on the public `BasicVSR`, please refer to this [paper](https://arxiv.org/pdf/2012.02181.pdf).<br>
-    We have improved the public model to attain superior visual quality and reduced computational complexity,  named `Enhanced BasicVSR`. The performance of the `Enhanced BasicVSR` model inference has also been optimized for Intel GPUs. Please note that this optimization is specific to OpenVINO 2022.3. Therefore, the Enhanced BasicVSR model only works with OpenVINO 2022.3 with the applied patches.
+- #### i. Enhanced BasicVSR
+  `BasicVSR` is a publicly available AI-based VSR algorithm. For more details on the public `BasicVSR`, please refer to this [paper](https://arxiv.org/pdf/2012.02181.pdf).<br><br>
+  We have improved the public model to attain superior visual quality and reduced computational complexity,  named `Enhanced BasicVSR`. The performance of the `Enhanced BasicVSR` model inference has also been optimized for Intel GPUs. Please note that this optimization is specific to OpenVINO 2022.3. Therefore, the Enhanced BasicVSR model only works with OpenVINO 2022.3 with the applied patches.<br><br>
+  The input shape of this model is `[1, (channels)3, (frames)3, H, W]`, and the output shape is `[1, (channels)3, (frames)3, 2xH, 2xW]`.
 
--  #### ii. Enhanced EDSR
-    `EDSR` is another publicly available AI-based single image SR algorithm. For more details on the public EDSR, please refer to this [paper](https://arxiv.org/pdf/1707.02921.pdf)
-
-    We have improved the public `EDSR` model to reduce the computational complexity by over 79% compared to Enhanced BasicVSR, while maintaining similar visual quality, named `Enhanced EDSR`.
+- #### ii. Enhanced EDSR
+  `EDSR` is another publicly available AI-based single image SR algorithm. For more details on the public EDSR, please refer to this [paper](https://arxiv.org/pdf/1707.02921.pdf)<br><br>
+  We have improved the public `EDSR` model to reduce the computational complexity by over 79% compared to Enhanced BasicVSR, while maintaining similar visual quality, named `Enhanced EDSR`.<br><br>
+  The input shape of this model is `[1, (channels)3, H, W]`, and the output shape is `[1, (channels)3, 2xH, 2xW]`.
 
 - #### iii. TSENet
-  `TSENet` is one multi-frame SR algorithm derived from [ETDS](https://github.com/ECNUSR/ETDS).<br>
-  We provide a preview version of the feature to support this model in the SDK and its plugin. Please contact your Intel representative to obtain the model package.
+  `TSENet` is one multi-frame SR algorithm derived from [ETDS](https://github.com/ECNUSR/ETDS).<br><br>
+  We provide a preview version of the feature to support this model in the SDK and its plugin. Please contact your Intel representative to obtain the model package.<br><br>
+  The input shape of this model is `[1, (channels * frames)9, H, W]`, and the output shape is `[1, (channels)3, 2xH, 2xW]`. For each inference, the input data is the `(n-1)th`, `(n)th`, and `(n+1)th` frames combined. The output data is the `(N)th` frame. For the first frame, the input data is `1st`, `1st`, `2nd` frames combined. For the last frame, the input data is the `(n-1)th`, `(n)th`, `(n)th` frames combined.<br>
 
 ### 1.4.2. Smart Video Processing (SVP)
-`SVP` is an AI-based video prefilter that enhances the perceptual rate-distortion in video encoding. With `SVP`, the encoded video streams maintain the same visual quality while reducing bandwidth, as measured by common video quality metrics (such as VMAF and (MS-)SSIM) and human perception.
+`SVP` is an AI-based video prefilter that enhances the perceptual rate-distortion in video encoding. With `SVP`, the encoded video streams maintain the same visual quality while reducing bandwidth, as measured by common video quality metrics (such as VMAF and (MS-)SSIM) and human perception.<br><br>
+The input and output shape of this model is `[1, (channels)3, H, W]`.<br>
 
 # 2. Setup iVSR env on linux
 The software was validated on:

@@ -42,7 +42,7 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=bgr24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=2&normalize_factor=255.0' -pix_fmt yuv420p test_out.mp4
 ```
-- Command sample to run CUSTOM VSR inference. Note the input pixel format supported by this model is `yuv420p`.
+- Command sample to run CUSTOM VSR inference. Note the input pixel format supported by this model is `yuv420p`, and its input shape is `[1, (Y channel)1, H, W]`, output shape is `[1, 1, 2xH, 2xW]`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<customvsr_model.xml>:input=input:output=output:nif=1:backend_configs='nireq=1&device=CPU&model_type=3' -pix_fmt yuv420p test_out.mp4
