@@ -1,16 +1,32 @@
-From 5bd688aa4cbf5629df4354161363c2ac943a0ebb Mon Sep 17 00:00:00 2001
+From d50841f2a463d0d4c6ec03c6ddbb7327f0f8a00a Mon Sep 17 00:00:00 2001
 From: LinXie <linxie@intel.com>
 Date: Fri, 23 Aug 2024 15:08:26 +0000
 Subject: [PATCH] Enable async request infer and refine the config setting
 
 ---
- libavfilter/dnn/dnn_backend_ivsr.c | 121 +++++++++++------------------
- 1 file changed, 47 insertions(+), 74 deletions(-)
+ libavfilter/dnn/dnn_backend_ivsr.c | 123 +++++++++++------------------
+ 1 file changed, 48 insertions(+), 75 deletions(-)
 
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
-index 6f2f5f0f07..c5eda40620 100644
+index 6f2f5f0f07..1f7dfff743 100644
 --- a/libavfilter/dnn/dnn_backend_ivsr.c
 +++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -423,7 +423,6 @@ static void infer_completion_callback(void *args)
+     av_assert0(request->lltask_count >= 1);
+     for (int i = 0; i < request->lltask_count; ++i) {
+         task = request->lltasks[i]->task;
+-        task->inference_done++;
+ 
+         if (task->do_ioproc) {
+             if (ivsr_model->model->frame_post_proc != NULL) {
+@@ -490,6 +489,7 @@ static void infer_completion_callback(void *args)
+             task->out_frame->height = output.height;
+         }
+ 
++        task->inference_done++;
+         av_freep(&request->lltasks[i]);
+         output.data =
+             (uint8_t *) output.data +
 @@ -599,8 +599,8 @@ static int execute_model_ivsr(IVSRRequestItem * request,
              goto err;
          }
