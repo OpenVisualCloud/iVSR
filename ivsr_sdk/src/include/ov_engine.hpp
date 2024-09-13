@@ -1,16 +1,16 @@
 /********************************************************************************
-* INTEL CONFIDENTIAL
-* Copyright (C) 2023 Intel Corporation
-*
-* This software and the related documents are Intel copyrighted materials,
-* and your use of them is governed by the express license under
-* which they were provided to you ("License").Unless the License
-* provides otherwise, you may not use, modify, copy, publish, distribute, disclose or
-* transmit this software or the related documents without Intel's prior written permission.
-*
-* This software and the related documents are provided as is,
-* with no express or implied warranties, other than those that are expressly stated in the License.
-*******************************************************************************/
+ * INTEL CONFIDENTIAL
+ * Copyright (C) 2023 Intel Corporation
+ *
+ * This software and the related documents are Intel copyrighted materials,
+ * and your use of them is governed by the express license under
+ * which they were provided to you ("License").Unless the License
+ * provides otherwise, you may not use, modify, copy, publish, distribute, disclose or
+ * transmit this software or the related documents without Intel's prior written permission.
+ *
+ * This software and the related documents are provided as is,
+ * with no express or implied warranties, other than those that are expressly stated in the License.
+ *******************************************************************************/
 
 /**
  * @file openvino_engine.h
@@ -23,11 +23,12 @@
 
 #include <condition_variable>
 #include <queue>
+
 #include "engine.hpp"
-#include "openvino/openvino.hpp"
-#include "openvino/pass/manager.hpp"
-#include "openvino/pass/make_stateful.hpp"
 #include "openvino/core/layout.hpp"
+#include "openvino/openvino.hpp"
+#include "openvino/pass/make_stateful.hpp"
+#include "openvino/pass/manager.hpp"
 
 typedef std::function<void(size_t id)> CallbackFunction;
 class inferReqWrap final {
@@ -101,13 +102,17 @@ public:
               std::string model_path,
               std::string custom_lib,
               std::map<std::string, ov::AnyMap> configs,
-              const std::vector<size_t>& reshape_settings)
+              const std::vector<size_t>& reshape_settings,
+              const tensor_desc_t input_tensor_desc,
+              const tensor_desc_t output_tensor_desc)
         : engine(this),
           device_(device),
           model_path_(model_path),
           custom_lib_(custom_lib),
           configs_(configs),
-          reshape_settings_(reshape_settings) {
+          reshape_settings_(reshape_settings),
+          input_tensor_desc_(input_tensor_desc),
+          output_tensor_desc_(output_tensor_desc) {
         // init();
     }
 
@@ -117,22 +122,36 @@ public:
 
     template <typename T>
     IVSRStatus get_attr_impl(const std::string& key, T& value) {
-        static_assert(std::is_same<T, ov::Shape>::value || std::is_same<T, size_t>::value,
+        static_assert(std::is_same<T, ov::Shape>::value || std::is_same<T, size_t>::value ||
+                          std::is_same<T, tensor_desc_t>::value,
                       "get_attr() is only supported for 'ov::Shape' and 'size_t' types");
-
         auto extend_shape = [](ov::Shape& shape, size_t dims) {
             if (shape.size() < dims)
                 for (size_t i = shape.size(); i < dims; i++)
                     shape.insert(shape.begin(), 1);
         };
 
-        if constexpr (std::is_same<T, ov::Shape>::value) {
-            if (key == "model_inputs" || key == "model_outputs") {
-                ov::Shape shape = (key == "model_inputs") ? input_.get_shape() : output_.get_shape();
-                extend_shape(shape, size_t{5});
-                value = shape;
+        if constexpr (std::is_same<T, tensor_desc_t>::value) {
+            ov::Shape shape;
+            std::string element_type;
+            std::string layout;
+            ov::Output<ov::Node> node;
+            if (key == "model_inputs") {
+                node = input_;
+            } else if (key == "model_outputs") {
+                node = output_;
             } else {
                 return UNSUPPORTED_KEY;
+            }
+
+            layout = ov::layout::get_layout(node).to_string();
+            shape = node.get_shape();
+            element_type = node.get_element_type().get_type_name();
+            memcpy((char*)value.precision, element_type.c_str(), element_type.size());
+            memcpy((char*)value.layout, layout.c_str(), layout.size());
+            value.dimension = shape.size();
+            for (int i = 0; i < shape.size(); ++i) {
+                value.shape[i] = shape[i];
             }
         } else if constexpr (std::is_same<T, size_t>::value) {
             if (key == "input_dims" || key == "output_dims") {
@@ -203,6 +222,8 @@ private:
     ov::Core instance_;
     ov::CompiledModel compiled_model_;
     std::vector<size_t> reshape_settings_;
+    tensor_desc_t input_tensor_desc_;
+    tensor_desc_t output_tensor_desc_;
 
     std::string custom_lib_;
     std::string model_path_;
@@ -211,4 +232,4 @@ private:
     ov::Output<ov::Node> output_;
 };
 
-#endif //OV_ENGINE_HPP
+#endif  // OV_ENGINE_HPP

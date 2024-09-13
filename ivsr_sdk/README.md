@@ -147,8 +147,8 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value);
     |Key name|Description|
     |:--|:--|
     |IVSR_VERSION|Use this key to get ivsr version.|
-    |INPUT_TENSOR_DESC|Use this key to get model input shape.|
-    |OUTPUT_TENSOR_DESC|Use this key to get model output shape.|
+    |INPUT_TENSOR_DESC|Use this key to get model input tensor description includes precision, layout and shape information.|
+    |OUTPUT_TENSOR_DESC|Use this key to get model output description includes precision, layout and shape information.|
     |NUM_INPUT_FRAMES|Use this key to get input frames number of the model.|
     |INPUT_DIMS|Use this key to get input dims of the model.|
     |OUTPUT_DIMS|Use this key to get input dims of the model.|

@@ -75,6 +75,8 @@ typedef enum {
     PRECISION        = 0x8, //!< Optional. To set inference precision for hardware>
     RESHAPE_SETTINGS = 0x9, //!< Optional. To set reshape setting for the input model>
     INPUT_RES        = 0xA, //!< Required. To specify the input frame resolution>
+    INPUT_TENSOR_DESC_SETTING     = 0xB,
+    OUTPUT_TENSOR_DESC_SETTING    = 0xC
 }IVSRConfigKey;
 
 typedef enum {
@@ -92,11 +94,19 @@ typedef enum {
  */
 typedef struct ivsr_config {
     IVSRConfigKey key;
-    const char *value;
+    const void *value;
     struct ivsr_config *next;
 }ivsr_config_t;
 
-
+typedef struct tensor_desc {
+    char precision[20];
+    char layout[20];
+    char tensor_color_format[20];
+    char model_color_format[20];
+    float      scale;
+    uint8_t    dimension;
+    size_t     shape[8];
+} tensor_desc_t;
 
 #ifdef __cplusplus
 extern "C" {

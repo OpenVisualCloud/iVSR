@@ -229,6 +229,8 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     int reshape_dim = 0, reshape_h = 0, reshape_w = 0;
     std::unordered_map<std::string, std::string> config_map;
     size_t infer_request_num = 1;  // default infer_request_num set to 1
+    const tensor_desc_t *input_tensor_desc = nullptr;
+    const tensor_desc_t *output_tensor_desc = nullptr;
 
     // Parse input config
     while (configs != nullptr) {
@@ -237,39 +239,39 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
 
         switch (configs->key) {
             case IVSRConfigKey::INPUT_MODEL:
-                model = std::string(configs->value);
+                model = std::string(static_cast<const char*>(configs->value));
                 if (!checkFile(model)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "INPUT_MODEL=" + std::string(configs->value);
+                    unsupported_output = "INPUT_MODEL=" + std::string(static_cast<const char*>(configs->value));
                 }
                 std::cout << "[INFO] " << "Model Path:" << model << std::endl;
                 break;
             case IVSRConfigKey::TARGET_DEVICE:
-                device = configs->value;
+                device = static_cast<const char*>(configs->value);
                 std::cout << "[INFO] " << "DEVICE:" << device << std::endl;
                 break;
             case IVSRConfigKey::BATCH_NUM:
-                batch = configs->value;
+                batch = static_cast<const char*>(configs->value);
                 break;
             case IVSRConfigKey::VERBOSE_LEVEL:
-                verbose = configs->value;
+                verbose = static_cast<const char*>(configs->value);
                 break;
             case IVSRConfigKey::CUSTOM_LIB:
-                custom_lib = configs->value;
+                custom_lib = static_cast<const char*>(configs->value);
                 if (!checkFile(custom_lib)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "CUSTOM_LIB=" + std::string(configs->value);
+                    unsupported_output = "CUSTOM_LIB=" + std::string(static_cast<const char*>(configs->value));
                 }
                 break;
             case IVSRConfigKey::CLDNN_CONFIG:
-                cldnn_config = configs->value;
+                cldnn_config = static_cast<const char*>(configs->value);
                 if (!checkFile(cldnn_config)) {
                     unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "CLDNN_CONFIG=" + std::string(configs->value);
+                    unsupported_output = "CLDNN_CONFIG=" + std::string(static_cast<const char*>(configs->value));
                 }
                 break;
             case IVSRConfigKey::PRECISION:
-                infer_precision = configs->value;
+                infer_precision = static_cast<const char*>(configs->value);
                 if (device.find("GPU") != std::string::npos) {
                     if (infer_precision != "f32" && infer_precision != "f16") {
                         ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
@@ -283,31 +285,37 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
                 }
                 break;
             case IVSRConfigKey::RESHAPE_SETTINGS:
-                reshape_settings = convert_string_to_vector(configs->value);
+                reshape_settings = convert_string_to_vector(static_cast<const char*>(configs->value));
                 reshape_dim = reshape_settings.size();
                 reshape_h = reshape_settings[reshape_dim - 2];
                 reshape_w = reshape_settings[reshape_dim - 1];
                 if (reshape_h % 2 != 0 || reshape_w % 2 != 0) {
-                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, configs->value);
+                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, static_cast<const char*>(configs->value));
                     return IVSRStatus::UNSUPPORTED_SHAPE;
                 }
                 break;
             case IVSRConfigKey::INPUT_RES:
-                reso = convert_string_to_vector(configs->value);
+                reso = convert_string_to_vector(static_cast<const char*>(configs->value));
                 frame_width  = reso[0];
                 frame_height = reso[1];
                 break;
             case IVSRConfigKey::INFER_REQ_NUMBER:
                 try {
-                    auto num = std::stoul(configs->value);
+                    auto num = std::stoul(static_cast<const char*>(configs->value));
                     if (num > infer_request_num)
                         infer_request_num = num;
                     std::cout << "[INFO] Infer request num: " << infer_request_num << std::endl;
                 } catch (const std::invalid_argument& e) {
-                    std::cerr << "[ERROR] Invalid argument: " << configs->value << std::endl;
+                    std::cerr << "[ERROR] Invalid argument: " << static_cast<const char*>(configs->value) << std::endl;
                 } catch (const std::out_of_range& e) {
-                    std::cerr << "[ERROR] Out of range: " << configs->value << std::endl;
+                    std::cerr << "[ERROR] Out of range: " << static_cast<const char*>(configs->value) << std::endl;
                 }
+                break;
+            case IVSRConfigKey::INPUT_TENSOR_DESC_SETTING:
+                input_tensor_desc = static_cast<const tensor_desc_t *>(configs->value);
+                break;
+            case IVSRConfigKey::OUTPUT_TENSOR_DESC_SETTING:
+                output_tensor_desc = static_cast<const tensor_desc_t *>(configs->value);
                 break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
@@ -333,7 +341,8 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     parse_engine_config(engine_configs, device, infer_precision, cldnn_config);
 
     // Initialize inference engine
-    auto ovEng = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings);
+    auto ovEng = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings,
+                                *input_tensor_desc, *output_tensor_desc);
     IVSRStatus status = ovEng->init();
     if (status != IVSRStatus::OK) {
         ivsr_status_log(status, "in ivsr_init");
@@ -351,21 +360,36 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     auto executor = new IVSRThread::IVSRThreadExecutor(executorConfig, ovEng);
 
     // Construct patch config
-    size_t input_dims = 0;
-    ovEng->get_attr("input_dims", input_dims);
-    ov::Shape model_inputs, model_outputs;
-    ovEng->get_attr("model_inputs", model_inputs);
-    ovEng->get_attr("model_outputs", model_outputs);
+    tensor_desc_t input_tensor = {
+        .precision = {0},
+        .layout = {0},
+        .tensor_color_format = {0},
+        .model_color_format = {0},
+        .scale = 0.0,
+        .dimension = 0,
+        .shape = {0}};
+    ovEng->get_attr("model_inputs", input_tensor);
+
+    tensor_desc_t output_tensor = {
+        .precision = {0},
+        .layout = {0},
+        .tensor_color_format = {0},
+        .model_color_format = {0},
+        .scale = 0.0,
+        .dimension = 0,
+        .shape = {0}};
+    ovEng->get_attr("model_outputs", output_tensor);
 
     PatchConfig patchConfig;
-    int m_input_width = *(model_inputs.end() - 1);
-    int m_input_height = *(model_inputs.end() - 2);
-    int nif = *(model_inputs.end() - 4);
-    int m_output_width = *(model_outputs.end() - 1);
+    int m_input_width = input_tensor.shape[ov::layout::width_idx(ov::Layout(input_tensor.layout))];;
+    int m_input_height = input_tensor.shape[ov::layout::height_idx(ov::Layout(input_tensor.layout))];
+    // hard code
+    int nif = input_tensor.dimension == 5 ? input_tensor.shape[1] : 1;
+    int m_output_width = output_tensor.shape[ov::layout::width_idx(ov::Layout(output_tensor.layout))];
     patchConfig.scale = m_output_width / m_input_width;
     patchConfig.patchHeight = m_input_height;
     patchConfig.patchWidth = m_input_width;
-    patchConfig.dims = input_dims;
+    patchConfig.dims = input_tensor.dimension;
     patchConfig.nif = nif;
 
 #ifdef ENABLE_LOG
@@ -373,14 +397,12 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
 #endif
 
     // Generate input data shape
-    std::vector<size_t> input_shape;
-    std::transform(model_inputs.begin(), model_inputs.end(), std::back_inserter(input_shape),
-                   [](size_t val) { return val; });
-    input_shape[input_shape.size() - 1] = frame_width;
-    input_shape[input_shape.size() - 2] = frame_height;
+    std::vector<size_t> input_res;
+    input_res.push_back(frame_height);
+    input_res.push_back(frame_width);
 
     // Use the parameterized constructor
-    *handle = new ivsr(ovEng, executor, config_map, patchConfig, std::move(input_shape));
+    *handle = new ivsr(ovEng, executor, config_map, patchConfig, std::move(input_res));
     return IVSRStatus::OK;
 }
 
@@ -526,22 +548,22 @@ IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs){
         while(configs!=nullptr){
             switch(configs->key){
                 case IVSRConfigKey::INPUT_MODEL:
-                    handle->vsr_config["model"] = configs->value;
+                    handle->vsr_config["model"] = static_cast<const char*>(configs->value);
                     break;
                 case IVSRConfigKey::TARGET_DEVICE:
-                    handle->vsr_config["device"] = configs->value;
+                    handle->vsr_config["device"] = static_cast<const char*>(configs->value);
                     break;
                 case IVSRConfigKey::BATCH_NUM:
-                    handle->vsr_config["batch_num"] = configs->value;
+                    handle->vsr_config["batch_num"] = static_cast<const char*>(configs->value);
                     break;
                 case IVSRConfigKey::VERBOSE_LEVEL:
-                    handle->vsr_config["verbose_level"] = configs->value;
+                    handle->vsr_config["verbose_level"] = static_cast<const char*>(configs->value);
                     break;
                 case IVSRConfigKey::CUSTOM_LIB:
-                    handle->vsr_config["custom_lib"] = configs->value;
+                    handle->vsr_config["custom_lib"] = static_cast<const char*>(configs->value);
                     break;
                 case IVSRConfigKey::CLDNN_CONFIG:
-                    handle->vsr_config["cldnn_config"] = configs->value;
+                    handle->vsr_config["cldnn_config"] = static_cast<const char*>(configs->value);
                     break;
                 default:
                     break;
@@ -570,24 +592,12 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
         }
         case IVSRAttrKey::INPUT_TENSOR_DESC:
         {
-            int* input_tensor_desc = (int*) value;
-            ov::Shape input_shape;
-            handle->inferEngine.get_attr("model_inputs", input_shape);
-            for(auto s : input_shape){
-                *input_tensor_desc = s;
-                input_tensor_desc++;
-            }
+            handle->inferEngine.get_attr("model_inputs", *(static_cast<tensor_desc_t *>(value)));
             break;
         }
         case IVSRAttrKey::OUTPUT_TENSOR_DESC:
         {
-            int* output_tensor_desc = (int*) value;
-            ov::Shape output_shape;
-            handle->inferEngine.get_attr("model_outputs", output_shape);
-            for(auto s : output_shape){
-                *output_tensor_desc = s;
-                output_tensor_desc++;
-            }
+            handle->inferEngine.get_attr("model_outputs", *(static_cast<tensor_desc_t *>(value)));
             break;
         }
         case IVSRAttrKey::NUM_INPUT_FRAMES:
