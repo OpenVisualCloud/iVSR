@@ -277,7 +277,7 @@ function_test()
         model_num=0
         nif=3
         normalize_factor=1.0
-        format=bgr24
+        format=rgb24
         resolution_list=("${resolutions_width_32align[@]}")
         rest_param="&extension=${EXTENSION}&op_xml=${OP_XML}&"
         ;;
@@ -292,7 +292,7 @@ function_test()
         model_num=2
         nif=1
         normalize_factor=255.0
-        format=bgr24
+        format=rgb24
         resolution_list=("${resolutions_all[@]}")
         ;;
     CUSTOMER)
@@ -314,7 +314,7 @@ function_test()
         model_num=4
         nif=1
         normalize_factor=1.0
-        format=bgr24
+        format=rgb24
         resolution_list=("${resolutions_all[@]}")
         ;;
     SVP)
@@ -328,7 +328,7 @@ function_test()
         model_num=1
         nif=1
         normalize_factor=1.0
-        format=bgr24
+        format=rgb24
         resolution_list=("${resolutions_all[@]}")
         ;;
     SVP_SE)
@@ -340,7 +340,7 @@ function_test()
         model_num=1
         nif=1
         normalize_factor=1.0
-        format=bgr24
+        format=rgb24
         resolution_list=("${resolutions_8align[@]}")
         ;;
     *)
