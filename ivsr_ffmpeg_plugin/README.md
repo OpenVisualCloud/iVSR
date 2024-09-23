@@ -32,10 +32,14 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ```
 Please note that for the Enhanced BasicVSR model, you need to set the `extension` and `op_xml` options (with `backend_configs`) in the command line. After applying OpenVINO's patches and building OpenVINO, the extension lib file is located in `<OpenVINO folder>/openvino/bin/intel64/Release/libcustom_extension.so`, and the op xml file is located in `<OpenVINO folder>/openvino/flow_warp_cl_kernel/flow_warp.xml`.<br>
 
-- Command sample to run SVP models inference, the input pixel format supported by the model is `rgb24`.
+- Command sample to run SVP models inference. If the supported input pixel format of the model variance is `rgb24`, set the preceeding format as is to avoid unnecessary layout conversion:
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=1' -pix_fmt yuv420p test_out.mp4
+```
+If the model variance supports Y-input, set the preceeding format as YUV:
+```
+./ffmpeg -i <your test video> -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:backend_configs='device=<CPU or GPU>&model_type=1' -pix_fmt yuv420p test_out.mp4
 ```
 - Command sample to run Enhanced EDSR inference, the input pixel format supported by the model is `rgb24`.
 ```

@@ -62,6 +62,14 @@ typedef enum {
 
 /**
  * @enum vsr sdk supported key.
+ * There are multiple configurations which contain resolutions,
+ *     INPUT_RES - it's for patch-based solution
+ *     RESHAPE_SETTINGS - it's to reshape the model's input tensor, NHW in current version
+ *     INPUT_TENSOR_DESC_SETTING - input data's tensor description
+ *     OUTPUT_TENSOR_DESC_SETTING - output data's tensor description
+ *
+ * RESHAPE_SETTINGS carries data for BATCH, WIDTH, HEIGH, in NHW format.
+ * We may extent the type from one vector to a structure which specifies layout and different dimensions
  *
  */
 typedef enum {

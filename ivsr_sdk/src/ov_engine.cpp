@@ -49,6 +49,27 @@ const std::map<std::string, ov::preprocess::ColorFormat> color_format_string_to_
     {"I420_Three_Planes", ov::preprocess::ColorFormat::I420_THREE_PLANES},
 };
 
+/*
+ * IN: output
+ * OUT: layout
+ *
+*/
+static IVSRStatus get_default_layout(const ov::Output<ov::Node>& output, ov::Layout& layout) {
+    size_t shape_size = output.get_partial_shape().size();
+    switch (shape_size) {
+    case 4:
+        layout = ov::Layout("NCHW");
+        break;
+    case 5:
+        layout = ov::Layout("NFCHW");
+        break;
+    default:
+        std::cout << "not supported model input/output shape size\n";
+        return GENERAL_ERROR;
+    }
+    return OK;
+}
+
 IVSRStatus ov_engine::init_impl() {
     if (custom_lib_ != "")
         instance_.add_extension(custom_lib_);
@@ -69,41 +90,54 @@ IVSRStatus ov_engine::init_impl() {
         multiple_inputs = true;
 
     if (!reshape_settings_.empty()) {
-        // get_shape() only can be called by static shape, openvino will check the shape size during reshape operation
-        // ov::Shape tensor_shape = input_.get_shape();
-        // assert(tensor_shape.size() == reshape_settings_.size());
-
-        ov::Shape tensor_shape = reshape_settings_;
+        //get model input shape
+        ov::PartialShape input_shape = model->inputs()[0].get_partial_shape();
+#ifdef ENALBE_LOG
+        std::cout << "input tensor shape is "<< input_shape.is_static()? "static: " : "dynamic: "
+                  << input_shape << std::endl;
+#endif
 
         size_t batch_index, channels_index, h_index, w_index;
-        if (tensor_shape.size() == 5) {
-            const ov::Layout model_layout{"NFCHW"};
-            w_index = ov::layout::width_idx(model_layout);
-            if (tensor_shape[w_index] % 32 != 0) {
+        //get model input tensor layout
+        ov::Layout input_layout = ov::layout::get_layout(model->inputs()[0]);
+        if (input_layout.empty()) {
+            get_default_layout(model->inputs()[0], input_layout);
+            //ov::layout::set_layout(model->inputs()[0], input_layout);
+        }
+        batch_index = ov::layout::batch_idx(input_layout);
+        channels_index = ov::layout::channels_idx(input_layout);
+        h_index = ov::layout::height_idx(input_layout);
+        w_index = ov::layout::width_idx(input_layout);
+
+        // Assume the input reshape_settings_'s layout is NHW.
+        // update input layer tensor batch/width/height with the value from reshape_settings_;
+        input_shape[batch_index] = reshape_settings_[ov::layout::batch_idx(ov::Layout("NHW"))];
+        input_shape[w_index] = reshape_settings_[ov::layout::width_idx(ov::Layout("NHW"))];
+        input_shape[h_index] = reshape_settings_[ov::layout::height_idx(ov::Layout("NHW"))];
+        //input_shape should be static now.
+        assert(input_shape.is_static());
+
+        //TODO: is this check for BasicVSR? Is it required anymore??
+        if (input_shape.size() == 5) {
+            if (input_shape[w_index].get_length() % 32 != 0) {
                 std::cout << "[Error]: " << "Current model requires input widths to be divisible by 32" << std::endl;
                 return UNSUPPORTED_SHAPE;
             }
         }
-        if (multiple_inputs) {
-            const ov::Layout model_layout{"NCHW"};
-            batch_index = ov::layout::batch_idx(model_layout);
-            channels_index = ov::layout::channels_idx(model_layout);
-            h_index = ov::layout::height_idx(model_layout);
-            w_index = ov::layout::width_idx(model_layout);
-        }
 
 #ifdef ENABLE_LOG
-        std::cout << "Reshape network to the image size = [" << reshape_settings_[reshape_settings_.size() - 2] << "x"
-                  << reshape_settings_[reshape_settings_.size() - 1] << "] " << std::endl;
+        std::cout << "Reshape network to size = [" << input_shape[w_index].get_length()
+			      << "x" << input_shape[h_index].get_length() << "] " << std::endl;
 #endif
-        model->reshape({{model->inputs()[0].get_any_name(), tensor_shape}});
+        // reshape the model with "static" shape.
+        model->reshape({{model->inputs()[0].get_any_name(), input_shape.to_shape()}});
 
         if (multiple_inputs) {
-            ov::Shape hidden_tensor_shape = reshape_settings_;
-            hidden_tensor_shape[batch_index] = tensor_shape[batch_index];
+            ov::Shape hidden_tensor_shape = input_shape.to_shape();
+            hidden_tensor_shape[batch_index] = input_shape[batch_index].get_length();
             hidden_tensor_shape[channels_index] = 64;
-            hidden_tensor_shape[h_index] = tensor_shape[h_index] / 4;
-            hidden_tensor_shape[w_index] = tensor_shape[w_index] / 4;
+            hidden_tensor_shape[h_index] = input_shape[h_index].get_length() / 4;
+            hidden_tensor_shape[w_index] = input_shape[w_index].get_length() / 4;
 
             for (int i = 1; i < model->inputs().size(); ++i)
                 model->reshape({{model->inputs()[i].get_any_name(), hidden_tensor_shape}});
@@ -136,38 +170,15 @@ IVSRStatus ov_engine::init_impl() {
     ov::preprocess::OutputInfo& output_info = ppp.output();
 
     // layout is NCHW by default if can not get layout information
-    if (ov::layout::get_layout(model->inputs()[0]).to_string() == "[...]") {
-        size_t input_shape_size = model->inputs()[0].get_shape().size();
-        ov::Layout layout;
-        switch (input_shape_size)
-        {
-        case 4:
-            layout = ov::Layout("NCHW");
-            break;
-        case 5:
-            layout = ov::Layout("NFCHW");
-            break;
-        default:
-            std::cout << "do not support set the model input layout\n";
-            return GENERAL_ERROR;
-        }
+    ov::Layout layout;
+    if (ov::layout::get_layout(model->inputs()[0]).empty()) {
+        get_default_layout(model->inputs()[0], layout);
         input_info.model().set_layout(layout);
     }
-    if (ov::layout::get_layout(model->outputs()[0]).to_string() == "[...]") {
-        size_t output_shape_size = model->outputs()[0].get_shape().size();
-        ov::Layout layout;
-        switch (output_shape_size)
-        {
-        case 4:
-            layout = ov::Layout("NCHW");
-            break;
-        case 5:
-            layout = ov::Layout("NFCHW");
-            break;
-        default:
-            std::cout << "do not support set the model output layout\n";
-            return GENERAL_ERROR;
-        }
+    //after calling ppp::InputInfo.model().set_layout(); model->input_::layout is not set though.
+    //std::cout << "model layout is " << ov::layout::get_layout(model->inputs()[0]).to_string() << endl;
+    if (ov::layout::get_layout(model->outputs()[0]).empty()) {
+        get_default_layout(model->outputs()[0], layout);
         output_info.model().set_layout(layout);
     }
     if (input_tensor_desc_.precision != nullptr) {
