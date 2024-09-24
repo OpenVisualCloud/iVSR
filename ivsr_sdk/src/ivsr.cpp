@@ -189,7 +189,7 @@ std::vector<size_t> convert_string_to_vector(const std::string& input) {
 }
 
 struct ivsr {
-    engine<ov_engine> inferEngine;
+    engine<ov_engine>* inferEngine;
     IVSRThread::IVSRThreadExecutor* threadExecutor;
     std::unordered_map<std::string, std::string> vsr_config;
     PatchConfig patchConfig;
@@ -201,7 +201,7 @@ struct ivsr {
           patchSolution(false) {}
 
     // Define a constructor to initialize engine and other members if needed
-    ivsr(engine<ov_engine> engine,
+    ivsr(engine<ov_engine>* engine,
          IVSRThread::IVSRThreadExecutor* executor,
          const std::unordered_map<std::string, std::string>& config,
          const PatchConfig& patch,
@@ -341,8 +341,14 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     parse_engine_config(engine_configs, device, infer_precision, cldnn_config);
 
     // Initialize inference engine
-    auto ovEng = new ov_engine(device, model, custom_lib, engine_configs, reshape_settings,
-                                *input_tensor_desc, *output_tensor_desc);
+    auto ovEng = new ov_engine(device,
+                               model,
+                               custom_lib,
+                               engine_configs,
+                               reshape_settings,
+                               *input_tensor_desc,
+                               *output_tensor_desc);
+
     IVSRStatus status = ovEng->init();
     if (status != IVSRStatus::OK) {
         ivsr_status_log(status, "in ivsr_init");
@@ -449,8 +455,8 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 
         // Create infer requests based on patch list size
         size_t required_infer_requests = patchList.size();
-        if (required_infer_requests > handle->inferEngine.get_infer_requests_size()) {
-            auto res = handle->inferEngine.create_infer_requests(required_infer_requests);
+        if (required_infer_requests > handle->inferEngine->get_infer_requests_size()) {
+            auto res = handle->inferEngine->create_infer_requests(required_infer_requests);
             if (res < 0) {
                 std::cout << "[ERROR]: Failed to create infer requests!\n";
                 return IVSRStatus::GENERAL_ERROR;
@@ -592,12 +598,12 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
         }
         case IVSRAttrKey::INPUT_TENSOR_DESC:
         {
-            handle->inferEngine.get_attr("model_inputs", *(static_cast<tensor_desc_t *>(value)));
+            handle->inferEngine->get_attr("model_inputs", *(static_cast<tensor_desc_t *>(value)));
             break;
         }
         case IVSRAttrKey::OUTPUT_TENSOR_DESC:
         {
-            handle->inferEngine.get_attr("model_outputs", *(static_cast<tensor_desc_t *>(value)));
+            handle->inferEngine->get_attr("model_outputs", *(static_cast<tensor_desc_t *>(value)));
             break;
         }
         case IVSRAttrKey::NUM_INPUT_FRAMES:
@@ -609,14 +615,14 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
         case IVSRAttrKey::INPUT_DIMS:
         {
             size_t dims = 0;
-            handle->inferEngine.get_attr("input_dims", dims);
+            handle->inferEngine->get_attr("input_dims", dims);
             *((size_t *)value) = dims;
             break;
         }
         case IVSRAttrKey::OUTPUT_DIMS:
         {
             size_t dims = 0;
-            handle->inferEngine.get_attr("output_dims", dims);
+            handle->inferEngine->get_attr("output_dims", dims);
             *((size_t *)value) = dims;
             break;
         }
@@ -636,7 +642,7 @@ IVSRStatus ivsr_deinit(ivsr_handle handle) {
     }
 
     try {
-        auto p = handle->inferEngine.get_impl();
+        auto p = handle->inferEngine->get_impl();
         if (p != nullptr)
             delete p;
 
