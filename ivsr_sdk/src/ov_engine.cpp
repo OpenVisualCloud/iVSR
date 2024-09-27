@@ -244,11 +244,7 @@ IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
 #ifdef ENABLE_PERF
         request->end_time();
         auto latency = request->get_execution_time_in_milliseconds();
-        size_t frame_num =
-            (request->get_input_tensor()).get_shape()[(request->get_input_tensor().get_shape()).size() - 4];
-        std::cout << "[PERF] "
-                  << "Inference Latency: " << latency
-                  << "ms, Throughput: " << double_to_string(frame_num * 1000.0 / latency) << "FPS" << std::endl;
+        std::cout << "[PERF] Inference Latency: " << latency << "ms" << std::endl;
 #endif
 
         if (ex) {
@@ -287,6 +283,69 @@ IVSRStatus ov_engine::run_impl(InferTask::Ptr task) {
 #ifdef ENABLE_LOG
     std::cout << "[Trace]: "
               << "ov_engine run: start task inference" << std::endl;
+#endif
+
+    return OK;
+}
+
+IVSRStatus ov_engine::process_impl(void* input_data, void* output_data, void* cb) {
+    // Check for valid input and output data pointers
+    if (input_data == nullptr || output_data == nullptr) {
+        std::cout << "[Error]: invalid input or output buffer pointer" << std::endl;
+        return GENERAL_ERROR;
+    }
+
+    auto inferReq = get_idle_request();
+
+    // Set callback for inference request
+    inferReq->set_callback([wp = std::weak_ptr<inferReqWrap>(inferReq), cb](std::exception_ptr ex) {
+        auto request = wp.lock();
+#ifdef ENABLE_PERF
+        request->end_time();
+        auto latency = request->get_execution_time_in_milliseconds();
+        std::cout << "[PERF] Inference Latency: " << latency << "ms" << std::endl;
+#endif
+
+        if (ex) {
+#ifdef ENABLE_LOG
+            std::cout << "[Trace]: Exception in infer request callback " << std::endl;
+#endif
+            try {
+                // std::rethrow_exception(ex);
+                throw ex;
+            } catch (const std::exception& e) {
+                std::cout << "Caught exception \"" << e.what() << "\"\n";
+            }
+        }
+
+        request->call_back();
+
+        // Check if the callback structure and function are valid, then call the function
+        if (cb) {
+            ivsr_cb_t* ivsr_cb = static_cast<ivsr_cb_t*>(cb);
+            if (ivsr_cb->ivsr_cb) {
+                ivsr_cb->ivsr_cb(ivsr_cb->args);
+            }
+        }
+    });
+
+#ifdef ENABLE_LOG
+    std::cout << "[Trace]: input: " << input_.get_element_type().get_type_name() << " " << input_.get_shape() << std::endl;
+    std::cout << "[Trace]: output: " << output_.get_element_type().get_type_name() << " " << output_.get_shape() << std::endl;
+#endif
+
+    // Construct input and output tensors
+    ov::Tensor input_tensor(input_.get_element_type(), input_.get_shape(), input_data);
+    inferReq->set_input_tensor(input_tensor);
+
+    ov::Tensor output_tensor(output_.get_element_type(), output_.get_shape(), output_data);
+    inferReq->set_output_tensor(output_tensor);
+
+    // Start asynchronous inference
+    inferReq->start_async();
+
+#ifdef ENABLE_LOG
+    std::cout << "[Trace]: ov_engine run: start task inference" << std::endl;
 #endif
 
     return OK;

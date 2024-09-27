@@ -120,6 +120,8 @@ public:
 
     IVSRStatus run_impl(InferTask::Ptr task);
 
+    IVSRStatus process_impl(void* input_data, void* output_data, void* cb = nullptr);
+
     template <typename T>
     IVSRStatus get_attr_impl(const std::string& key, T& value) {
         static_assert(std::is_same<T, ov::Shape>::value || std::is_same<T, size_t>::value ||

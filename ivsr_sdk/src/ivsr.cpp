@@ -45,13 +45,16 @@ std::vector<std::string> parse_devices(const std::string& device_string) {
     return result;
 }
 
-void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string device, std::string infer_precision, std::string cldnn_config){
+void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
+                         const std::string& device,
+                         const std::string& infer_precision,
+                         const std::string& cldnn_config) {
     auto getDeviceTypeFromName = [](std::string device) -> std::string {
         return device.substr(0, device.find_first_of(".("));
     };
-    if(device.find("GPU") != std::string::npos && !cldnn_config.empty()){
+    if (device.find("GPU") != std::string::npos && !cldnn_config.empty()) {
         if (!config.count("GPU"))
-                config["GPU"] = {};
+            config["GPU"] = {};
         config["GPU"]["CONFIG_FILE"] = cldnn_config;
     }
 
@@ -74,44 +77,41 @@ void parse_engine_config(std::map<std::string, ov::AnyMap> &config, std::string 
     // remove the hardware devices if MULTI appears in the devices list.
     auto hardware_devices = devices;
     if (if_multi) {
-	ivsr_version_t version;
+        ivsr_version_t version;
         ov::Version ov_version = ov::get_openvino_version();
-	std::string ov_buildNumber = std::string(ov_version.buildNumber);
+        std::string ov_buildNumber = std::string(ov_version.buildNumber);
         // Parse out the currect virtual device as the target device.
         std::string virtual_device = split(device, ':').at(0);
         auto iter_virtual = std::find(hardware_devices.begin(), hardware_devices.end(), virtual_device);
         hardware_devices.erase(iter_virtual);
-	if (ov_buildNumber.find("2022.3") != std::string::npos) {
-	    devices.clear();
+        if (ov_buildNumber.find("2022.3") != std::string::npos) {
+            devices.clear();
             devices.push_back(virtual_device);
-	} else {
-	    devices = hardware_devices;
-	}
+        } else {
+            devices = hardware_devices;
+        }
     }
     // update config per device
-    int nstream = 1; // set nstream = 1 for GPU what about CPU?
-    //std::string infer_precision = "f32"; // set infer precision to f32
-    //std::string infer_precision = "f16"; // set infer precision to f32
+    int nstream = 1;  // set nstream = 1 for GPU what about CPU?
     for (auto& d : devices) {
         auto& device_config = config[d];
         try {
             // set throughput streams and infer precision for hardwares
             if (d == "MULTI" || d == "AUTO") {
-                for(auto& hd : hardware_devices){
-                    // construct device_config[hd] map and insert first property
-                    device_config.insert(ov::device::properties(hd, ov::num_streams(nstream)));
-                    // insert second property in device_config[hd]
+                for (auto& hd : hardware_devices) {
                     auto& property = device_config[hd].as<ov::AnyMap>();
-                    property.emplace(ov::hint::inference_precision(infer_precision));
+                    property.emplace(ov::device::properties(hd, ov::num_streams(nstream)));
+                    if (!infer_precision.empty())
+                        property.emplace(ov::hint::inference_precision(infer_precision));
                 }
-            }
-            else if(d.find("GPU") != std::string::npos){ // GPU
+            } else if (d.find("GPU") != std::string::npos) {  // GPU
                 device_config.emplace(ov::num_streams(nstream));
-                device_config.emplace(ov::hint::inference_precision(infer_precision));
-            }
-            else{ // CPU
+                if (!infer_precision.empty())
+                    device_config.emplace(ov::hint::inference_precision(infer_precision));
+            } else {  // CPU
                 // insert inference precision to map device_config
-                device_config.emplace(ov::hint::inference_precision(infer_precision));
+                if (!infer_precision.empty())
+                    device_config.emplace(ov::hint::inference_precision(infer_precision));
             }
         } catch (const ov::AssertFailure& e) {
             std::cerr << "Caught an ov::AssertFailure exception: " << e.what() << std::endl;
@@ -222,7 +222,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     }
 
     // Configuration variables
-    std::string model, device, batch, infer_precision = "f32";
+    std::string model, device, batch, infer_precision;
     std::string verbose, custom_lib, cldnn_config;
     std::vector<size_t> reshape_settings, reso;
     size_t frame_width = 0, frame_height = 0;
@@ -530,10 +530,13 @@ IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output
             return ivsr_process(handle, input_data, output_data, cb);
         }
 
-        // Get data into infer task
-        std::shared_ptr<InferTask> task =
-            handle->threadExecutor->CreateTask(input_data, output_data, InferFlag::AUTO, cb);
-        handle->threadExecutor->Enqueue(task);
+        /* Uncomment: to use thread loop and internal task to process */
+        // std::shared_ptr<InferTask> task =
+        //   handle->threadExecutor->CreateTask(input_data, output_data, InferFlag::AUTO, cb);
+        // handle->threadExecutor->Enqueue(task);
+
+        handle->inferEngine->proc(input_data, output_data, cb);
+
     } catch (const std::exception& e) {
         std::cout << "Error in ivsr_process: " << e.what() << std::endl;
         ivsr_status_log(IVSRStatus::EXCEPTION_ERROR, e.what());
