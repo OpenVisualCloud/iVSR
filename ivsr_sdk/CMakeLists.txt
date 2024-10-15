@@ -13,9 +13,12 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_FOLDER}/lib)
 set(SDK_PRIVATE_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/privates/include)
 
 add_subdirectory(src)
-add_subdirectory(samples)
 add_subdirectory(tools)
 add_subdirectory(privates)
+
+if(ENABLE_SAMPLE)
+    add_subdirectory(samples)
+endif()
 
 if(ENABLE_TEST)
     add_subdirectory(test)
