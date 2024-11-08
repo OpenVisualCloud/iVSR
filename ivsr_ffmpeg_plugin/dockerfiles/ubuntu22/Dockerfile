@@ -248,7 +248,7 @@ RUN cmake .. \
     make install && \
     echo "Building vsr sdk finished."
 
-#build ffmpeg wiht iVSR SDK backend
+#build ffmpeg with iVSR SDK backend
 RUN apt-get update && \
   DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates tar g++ wget pkg-config nasm yasm libglib2.0-dev flex bison gobject-introspection libgirepository1.0-dev python3-dev \

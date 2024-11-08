@@ -81,9 +81,9 @@ The input and output shape of this model is `[1, (channels)3, H, W]`.<br>
 The software was validated on:
 - Intel Xeon hardware platform
 - (Optional) Intel Data Center GPU Flex 170(*aka* ATS-M1 150W)
-- Host OS: Linux based OS (Ubuntu 22.04)
-- Docker OS: Ubuntu 22.04
-- OpenVINO: [2022.3](https://github.com/openvinotoolkit/openvino/tree/2022.3.0) or [2023.2](https://github.com/openvinotoolkit/openvino/tree/2023.2.0)
+- Host OS: Linux based OS (Ubuntu 22.04 or Rocky Linux 9.3)
+- Docker OS: Ubuntu 22.04 or Rocky Linux 9.3
+- OpenVINO: [2022.3](https://github.com/openvinotoolkit/openvino/tree/2022.3.0) or [2023.2](https://github.com/openvinotoolkit/openvino/tree/2023.2.0) or [2024.4](https://github.com/openvinotoolkit/openvino/tree/2024.4.0)
 - FFmpeg: [n6.1](https://github.com/FFmpeg/FFmpeg/tree/n6.1)
 
 Building iVSR requires the installation of the GPU driver(optional), OpenCV, OpenVINO, and FFmpeg.<br>
@@ -182,16 +182,17 @@ sudo systemctl restart docker
 
 ```bash
 cd ./ivsr_ffmpeg_plugin
-./build_docker.sh --enable_ov_patch [true|false] --ov_version [2022.3|2023.2]
+./build_docker.sh --enable_ov_patch [true|false] --ov_version [2022.3|2023.2|2024.4|2024.4s] --os_version [rockylinux9|ubuntu22]
 ```
 - `enable_ov_patch`: Set as `true` or `flase` to enable or disable the application of OpenVINO 2022.3 patches, which are needed to support the Enhanced BasicVSR model.<br>
-- `ov_version`: Set the OpenVINO version to `2022.3` or `2023.2`, which will be built and installed. iVSR currently supports both OpenVINO 2022.3 and 2023.2, but the patches to enable the Enhanced BasicVSR model are only for OpenVINO 2022.3.<br>
-If the docker image builds successfully, you can see a docker image named `ffmpeg_ivsr_sdk_ov2022.3` or `ffmpeg_ivsr_sdk_ov2023.2` in the output of `docker image ls`.<br>
+- `ov_version`: Set the OpenVINO version to `2022.3`, `2023.2`, `2024.4`, `2024.4s`, which will be built and installed, the 2024.4s mean install openvino 2024.4 via apt or yum not build and install from source code. iVSR currently supports both OpenVINO 2022.3, 2023.2 and 2024.4, but the patches to enable the Enhanced BasicVSR model are only for OpenVINO 2022.3.<br>
+- `os_version`: Set OS version of Docker image to ubuntu22(Ubuntu 22.04) or rockylinux9(Rocky Linux 9.3) to build docker image based on specific OS.<br>
+If the docker image builds successfully, you can see a docker image named `ffmpeg_ivsr_sdk_${os_version}_ov${ov_version}` such as `ffmpeg_ivsr_sdk_ubuntu22_ov2022.3` or `ffmpeg_ivsr_sdk_rockylinux9_ov2022.3` in the output of `docker image ls`.<br>
 
 ### 2.4.4. Start Docker Container
 
 ```bash
-sudo docker run -itd --name ffmpeg_ivsr_sdk_container --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/dri:/dev/dri ffmpeg_ivsr_sdk_[ov2022.3|ov2023.2]:latest bash
+sudo docker run -itd --name ffmpeg_ivsr_sdk_container --privileged -e MALLOC_CONF="oversize_threshold:1,background_thread:true,metadata_thp:auto,dirty_decay_ms:9000000000,muzzy_decay_ms:9000000000" -e http_proxy=$http_proxy -e https_proxy=$https_proxy -e no_proxy=$no_proxy --shm-size=128g --device=/dev/dri:/dev/dri ffmpeg_ivsr_sdk_[ubuntu22|rockylinux9]_[ov2022.3|ov2023.2|ov2024.4]:latest bash
 sudo docker exec -it ffmpeg_ivsr_sdk_container bash
 ```
 Note `--device=/dev/dri:/dev/dri` is specified in the command to add the host gpu device to container.<br>

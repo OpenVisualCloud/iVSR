@@ -2,15 +2,21 @@
 
 enable_ov_patch="false"
 
+# Default os_version set to ubuntu22
+os_version="ubuntu22"
+
 # Extract available OV versions from Dockerfile names and format them with "|"
-available_versions=$(ls ov*.dockerfile 2>/dev/null | grep -oP '(?<=ov)\d+\.\d+[a-z]*' | paste -sd '|')
+available_versions=$(ls dockerfiles/${os_version}/ov*.dockerfile 2>/dev/null | grep -oP '(?<=ov)\d+\.\d+[a-z]*' | paste -sd '|')
 
 # Default OV_VERSION set to the first available version
 ov_version=$(echo $available_versions | awk -F '|' '{print $1}')
 
+# Extract available OS versions from name of dockerfiles folder
+available_os=$(ls dockerfiles 2>/dev/null | paste -sd '|')
+
 # Function to print usage and exit with error
 print_usage_and_exit() {
-  echo "Usage: $0 --enable_ov_patch [true|false] --ov_version [${available_versions}]"
+  echo "Usage: $0 --enable_ov_patch [true|false] --ov_version [${available_versions}] --os_version [${available_os}]"
   exit 1
 }
 
@@ -36,6 +42,16 @@ while [ $# -gt 0 ]; do
       fi
       shift
       ;;
+    --os_version)
+      shift
+      value=$(echo $1 | tr '[:upper:]' '[:lower]')
+      if echo "$available_os" | grep -qw "$value"; then
+        os_version="$value";
+      else
+        print_usage_and_exit
+      fi
+      shift
+    ;;
     *)
       print_usage_and_exit
       ;;
@@ -50,11 +66,13 @@ else
   echo "ENABLE_OV_PATCH is not applicable for version $ov_version. Automatically set to false."
 fi
 
-docker build --build-arg http_proxy=$http_proxy \
-  --build-arg https_proxy=$https_proxy \
-  --build-arg no_proxy=$no_proxy \
-  --build-arg PYTHON=python3.10 \
-  --build-arg ENABLE_OV_PATCH=$enable_ov_patch \
-  --build-arg OV_VERSION=$ov_version \
-  -f ov${ov_version}.dockerfile -t ffmpeg_ivsr_sdk_ov${ov_version} \
-  ../
+docker build \
+    --build-arg http_proxy=$http_proxy \
+    --build-arg https_proxy=$https_proxy \
+    --build-arg no_proxy=$no_proxy \
+    --build-arg PYTHON=python3.10 \
+    --build-arg ENABLE_OV_PATCH=$enable_ov_patch \
+    --build-arg OV_VERSION=$ov_version \
+    -f ./dockerfiles/$os_version/ov${ov_version}.dockerfile \
+    -t ffmpeg_ivsr_sdk_${os_version}_ov${ov_version} \
+    ../
