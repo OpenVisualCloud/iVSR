@@ -209,9 +209,13 @@ IVSRStatus ov_engine::init_impl() {
     //    output_info.preprocess().convert_color(
     //        color_format_string_to_ov.at(std::string(input_tensor_desc_.model_color_format)));
     // }
-    if (input_tensor_desc_.scale - 1 > 0) {
+    if ((input_tensor_desc_.scale - 1.0f) > 1e-6f) {
+        // the input tensor precision should not be float
+        assert(std::string(input_tensor_desc_.precision) == std::string("u8") ||
+               std::string(input_tensor_desc_.precision) == std::string("u16"));
         input_info.preprocess().convert_element_type(ov::element::f32);
         input_info.preprocess().scale(input_tensor_desc_.scale);
+        // PPP doesn't support un-scale, so
         // the precision of output tensor need to be float if the scale != 0 or 1
         output_info.tensor().set_element_type(ov::element::f32);
     }
