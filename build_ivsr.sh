@@ -241,7 +241,8 @@ cd ${IVSR_SDK_DIR}/build
 cmake .. \
   -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
   -DCMAKE_BUILD_TYPE=Release
-make
+make -j $(nproc --all)
+make install
 echo "Build ivsr sdk finished."
 
 
@@ -289,9 +290,9 @@ if ${ENABLE_COMPILE_FFMPEG}; then
   export LD_LIBRARY_PATH=${IVSR_SDK_DIR}/lib:${CUSTOM_IE_LIBDIR}:${TBB_DIR}/../lib:"$LD_LIBRARY_PATH"
   cd ${FFMPEG_DIR}
   ./configure \
+  --extra-cflags=-fopenmp \
+  --extra-ldflags=-fopenmp \
   --enable-libivsr \
-  --extra-cflags=-I${IVSR_SDK_DIR}/include/ \
-  --extra-ldflags=-L${IVSR_SDK_DIR}/lib \
   --disable-static \
   --disable-doc \
   --enable-shared \
