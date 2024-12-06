@@ -1,0 +1,17 @@
+{
+    "pathes": {
+      "FFMPEG_BIN_DIR": "/workspace/ivsr/ivsr_ffmpeg_plugin/ffmpeg",
+      "BasicVSR_FP32_PATH": "/home/models/BasicVSR/fp32/basicvsr_x2_opensource_release_dynamic.xml",
+      "EDSR_FP32_PATH": "/home/models/EDSR/fp32/edsr.xml",
+      "EDSR_FP16_PATH": "/home/models/EDSR/fp16/edsr.xml",
+      "CUSTOMER_FP32_PATH": "/home/models/CUSTOMER/fp32/meta_vsr.xml",
+      "TSENET_FP16_PATH":"/home/models/TSENET/fp16/ETDS_tempOnC_M7C48_x2_t3_h1080_w1920_fp16.xml",
+      "SVP_FP32_PATH": "/home/models/SVP/fp32/dunet.xml",
+      "SVP_FP16_PATH": "/home/models/SVP/fp16/dunet.xml",
+      "SVP_INT8_PATH": "/home/models/SVP/int8/dunet.xml",
+      "SVP_SE_FP16_PATH":"/home/models/SVP_SE/fp16/qnet3m_16165.xml"
+    },
+    "test_cases": ["function","stress_long","stress_loop"],
+    "test_models":["CUSTOMER","EDSR","SVP","SVP_SE"],
+    "devices":["CPU","GPU"]
+  }
