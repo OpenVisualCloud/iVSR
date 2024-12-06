@@ -1,2 +1,0 @@
---model_path=/home/models/BasicVSR/0_BasicVSR_release_models/basicvsr_x2_opensource_release_dynamic.xml --data_path=/home/test_videos/003 --extension=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so --reshape_values="(1,3,3,1080,1920)" --cldnn_config=/workspace/ivsr/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml --nig=3 --device=CPU
---model_path=/home/models/EDSR/edsr.xml --data_path=/home/test_videos/003 --nig=1 --device=GPU  --normalize_factor=255.0 --precision=f16

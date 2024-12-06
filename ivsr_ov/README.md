@@ -1,9 +1,0 @@
-# OpenVINO Opt
-In this folder, optimization patches are provided to run the inference of Enhanced BasicVSR on Intel CPU and
-Intel Data Center GPU Flex 170 (*aka* ATS-M1 150W)
-with OpenVINO. 
-
-| Subfolder                | Description                                | How to use                                                                                                                                                                                             |
-|--------------------------|--------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| based_on_openvino_2022.1 | Optimization patches to OpenVINO 2022.1.0. | Check [this](./based_on_openvino_2022.1/README.md) for more details. |
-| based_on_openvino_2022.3 | Optimization patches to OpenVINO 2022.3.0. | Check [this](./based_on_openvino_2022.3/README.md) for more details. |
