@@ -40,7 +40,7 @@ sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
 echo "deb https://apt.repos.intel.com/openvino/2024 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/intel-openvino-2024.list
 
 sudo apt-get update
-sudo apt-get install -y openvino-2024.4.0
+sudo apt-get install -y openvino-2024.5.0
 rm -f GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
 ```
 
@@ -69,7 +69,7 @@ make -j $(nproc --all)
 sudo make install
 ```
 
-### 5. Build and Install FFmpeg with Libopenvino Support
+### 5. Build and Install FFmpeg with iVSR SDK Support
 
 1. Configure global Git settings if you didn't.
 2. Clone the FFmpeg repository and check out the desired version.
@@ -96,8 +96,7 @@ git am --whitespace=fix *.patch
     --enable-version3 \
     --enable-libivsr \
     --enable-libx264 \
-    --enable-libx265 \
-    --enable-libopenvino
+    --enable-libx265
 
 make -j$(nproc)
 sudo make install

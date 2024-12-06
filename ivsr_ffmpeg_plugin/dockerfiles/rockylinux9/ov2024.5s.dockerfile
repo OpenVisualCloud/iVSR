@@ -59,7 +59,7 @@ gpgkey=https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.
 EOF
 
 RUN mv /tmp/openvino-2024.repo /etc/yum.repos.d && \
-    yum -y install openvino-2024.4.0
+    yum -y install openvino-2024.5.0
 
 RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name"
