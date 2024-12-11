@@ -20,7 +20,7 @@ export OpenCV_DIR=<OpenCV installation dir>/install/lib/cmake/opencv4
 cd ivsr_sdk
 mkdir -p ./build
 cd ./build
-cmake .. -DENABLE_THREADPROCESS=ON -DCMAKE_BUILD_TYPE=Release
+cmake .. -DENABLE_THREADPROCESS=ON -DENABLE_SAMPLE=ON -DCMAKE_BUILD_TYPE=Release
 make
 make install
 ```
