@@ -69,7 +69,7 @@ RUN cmake \
       -DWITH_GSTREAMER=OFF \
       -DWITH_JASPER=OFF \
       .. && \
-    make -j "$(nproc)" && \
+    make -j16 && \
     make install
 
 WORKDIR ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin
@@ -137,7 +137,7 @@ RUN  cmake \
     -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-  make -j $(nproc --all) && \
+  make -j16 && \
   make install && \
   bash ${PWD}/../install/setupvars.sh
 
@@ -159,7 +159,7 @@ WORKDIR ${IVSR_SDK_DIR}/build
 RUN cmake .. \
       -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
       -DCMAKE_BUILD_TYPE=Release && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     echo "Building vsr sdk finished."
 
@@ -173,7 +173,7 @@ WORKDIR ${WORKSPACE}
 RUN git clone https://github.com/mirror/x264 -b stable --depth 1 && \
     cd x264 && \
     ./configure --enable-shared && \
-    make -j $(nproc) && \
+    make -j16 && \
     make install
 
 # build libx265
@@ -184,7 +184,7 @@ RUN wget ${LIBX265} && \
     rm ./3.4.tar.gz && \
     cd x265-3.4/build/linux && \
     cmake -DBUILD_SHARED_LIBS=ON -DHIGH_BIT_DEPTH=ON ../../source && \
-    make -j$(nproc) && \
+    make -j16 && \
     make install
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
@@ -216,7 +216,7 @@ RUN ./configure \
 --enable-libx264 \
 --enable-libx265 \
 --enable-version3 && \
-make -j $(nproc --all) && \
+make -j16 && \
 make install
 
 WORKDIR ${WORKSPACE}

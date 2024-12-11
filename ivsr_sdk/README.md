@@ -191,7 +191,7 @@ The method deinitializes the handle and releases the resources allocated for iVS
 ##  **VSR Sample**
 
 
-There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO backend. You can reach the sample from `<iVSR project path>/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
+There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO backend. Please add CMake option **-DENABLE_SAMPLE=ON** and build/install its dependency `OpenCV` component befor that. You can reach the sample from `<iVSR project path>/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
 
 |Option name|Desciption|Default value|Recommended value(s)|
 |:--|:--|:--|:--|

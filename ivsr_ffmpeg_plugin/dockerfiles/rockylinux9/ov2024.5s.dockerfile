@@ -59,7 +59,7 @@ gpgkey=https://yum.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.
 EOF
 
 RUN mv /tmp/openvino-2024.repo /etc/yum.repos.d && \
-    yum -y install openvino-2024.4.0
+    yum -y install openvino-2024.5.0
 
 RUN git config --global user.email "noname@example.com" && \
   git config --global user.name "no name"
@@ -73,7 +73,7 @@ WORKDIR ${IVSR_SDK_DIR}/build
 RUN cmake .. \
       -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
       -DCMAKE_BUILD_TYPE=Release && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     echo "Building vsr sdk finished."
 
@@ -87,7 +87,7 @@ WORKDIR ${WORKSPACE}
 RUN git clone https://github.com/mirror/x264 -b stable --depth 1 && \
     cd x264 && \
     ./configure --enable-shared && \
-    make -j $(nproc) && \
+    make -j16 && \
     make install
 
 # build libx265
@@ -98,7 +98,7 @@ RUN wget ${LIBX265} && \
     rm ./3.4.tar.gz && \
     cd x265-3.4/build/linux && \
     cmake -DBUILD_SHARED_LIBS=ON -DHIGH_BIT_DEPTH=ON ../../source && \
-    make -j$(nproc) && \
+    make -j16 && \
     make install
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
@@ -130,7 +130,7 @@ RUN ./configure \
 --enable-libx264 \
 --enable-libx265 \
 --enable-version3 && \
-make -j $(nproc --all) && \
+make -j16 && \
 make install
 
 WORKDIR ${WORKSPACE}
