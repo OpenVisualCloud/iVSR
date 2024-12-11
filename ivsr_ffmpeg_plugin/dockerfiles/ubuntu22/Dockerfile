@@ -94,7 +94,7 @@ RUN cmake \
       -DWITH_GSTREAMER=OFF \
       -DWITH_JASPER=OFF \
       .. && \
-    make -j "$(nproc)" && \
+    make -j16 && \
     make install
 
 WORKDIR ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin
@@ -224,7 +224,7 @@ RUN  cmake \
     -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release \
     .. && \
-  make -j $(nproc --all) && \
+  make -j16 && \
   make install && \
   bash ${PWD}/../install/setupvars.sh
 
@@ -244,7 +244,7 @@ WORKDIR ${IVSR_SDK_DIR}/build
 RUN cmake .. \
       -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
       -DCMAKE_BUILD_TYPE=Release && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     echo "Building vsr sdk finished."
 
@@ -302,7 +302,7 @@ RUN if [ -f "${CUSTOM_OV_INSTALL_DIR}/setvars.sh" ]; then \
     --enable-libx264 \
     --enable-libx265 \
     --enable-version3 && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install
 
 WORKDIR ${WORKSPACE}

@@ -87,7 +87,7 @@ COPY ./ivsr_sdk ${WORKSPACE}/ivsr/ivsr_sdk
 WORKDIR ${WORKSPACE}/ivsr/ivsr_sdk
 RUN mkdir -p build && cd build && \
     cmake .. -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON -DCMAKE_BUILD_TYPE=Release && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     echo "Building iVSR SDK finished."
 
@@ -102,7 +102,7 @@ RUN git config --global user.email "noname@example.com" && \
     git clone ${FFMPEG_REPO} . && \
     git checkout ${FFMPEG_VERSION}
 
-COPY ./ivsr_ffmpeg_plugin/patches/*.patch .
+COPY ./ivsr_ffmpeg_plugin/patches/*.patch ./
 RUN for patch_file in $(find -iname "*.patch" | sort -n); do \
     echo "Applying: ${patch_file}"; \
     git am --whitespace=fix ${patch_file}; \
@@ -118,7 +118,7 @@ RUN ./configure \
     --enable-libivsr \
     --enable-libx264 \
     --enable-libx265 && \
-    make -j$(nproc) && \
+    make -j16 && \
     make install
 
 # for GPU

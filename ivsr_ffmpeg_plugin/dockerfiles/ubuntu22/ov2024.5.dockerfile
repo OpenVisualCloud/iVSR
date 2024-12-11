@@ -94,7 +94,7 @@ RUN cmake -DCMAKE_BUILD_TYPE=Release \
     -DWITH_GSTREAMER=OFF \
     -DWITH_JASPER=OFF \
     .. && \
-    make -j "$(nproc)" && \
+    make -j16 && \
     make install && \
     cd ${WORKSPACE}/opencv-4.5.3-openvino-2021.4.2/install/bin && bash ./setup_vars_opencv4.sh
 
@@ -121,7 +121,7 @@ RUN mkdir -p build && cd build && \
     -DENABLE_FUNCTIONAL_TESTS=OFF -DENABLE_DEBUG_CAPS=ON \
     -DENABLE_GPU_DEBUG_CAPS=ON -DENABLE_CPU_DEBUG_CAPS=ON \
     -DCMAKE_BUILD_TYPE=Release .. && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     bash ../install/setupvars.sh
 
@@ -138,7 +138,7 @@ COPY ./ivsr_sdk ${WORKSPACE}/ivsr/ivsr_sdk
 WORKDIR ${WORKSPACE}/ivsr/ivsr_sdk
 RUN mkdir -p build && cd build && \
     cmake .. -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON -DCMAKE_BUILD_TYPE=Release && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install && \
     echo "Building iVSR SDK finished."
 
@@ -157,7 +157,7 @@ ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${WORKSPACE}/ivsr/ivsr_ffmpeg_plugin
 WORKDIR ${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
 RUN git clone ${FFMPEG_REPO} . && \
     git checkout ${FFMPEG_VERSION}
-COPY ./ivsr_ffmpeg_plugin/patches/*.patch .
+COPY ./ivsr_ffmpeg_plugin/patches/*.patch ./
 RUN for patch_file in $(find -iname "*.patch" | sort -n); do \
     echo "Applying: ${patch_file}"; \
     git am --whitespace=fix ${patch_file}; \
@@ -172,7 +172,7 @@ RUN source ${CUSTOM_IE_DIR}/../setupvars.sh && \
     ./configure --extra-cflags=-fopenmp --extra-ldflags=-fopenmp \
     --enable-libivsr --disable-static --disable-doc --enable-shared \
     --enable-vaapi --enable-gpl --enable-libx264 --enable-libx265 --enable-version3  && \
-    make -j $(nproc --all) && \
+    make -j16 && \
     make install
 
 # for GPU
