@@ -1,0 +1,31 @@
+From ee0c258e623c2f7c0acb7c30e12940344e909af2 Mon Sep 17 00:00:00 2001
+From: Xiaoxia Liang <xiaoxia.liang@intel.com>
+Date: Tue, 11 Feb 2025 02:44:46 +0000
+Subject: [PATCH] Set element type of output for EDSR model.
+
+Signed-off-by: Xiaoxia Liang <xiaoxia.liang@intel.com>
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 4a0fab99cd..0e4aef5152 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -912,6 +912,14 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
+     default:
+         break;
+     }
++    // set element type of output for EDSR
++    if (ivsr_model->model_type == EDSR) {
++	if (desc->comp[0].depth == 8) {
++            strcpy(output_tensor_desc_set.precision, "u8");
++	} else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++            strcpy(output_tensor_desc_set.precision, "u16");
++	}
++    }
+     // customize layout for Basic_VSR and TSENet
+     if (ivsr_model->model_type == BASICVSR) {
+         strcpy(input_tensor_desc_set.layout, "NFHWC");
+--
+2.34.1
