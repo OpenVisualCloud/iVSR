@@ -1,7 +1,7 @@
 From 5c3dffd16ba4823bed67d75aca4ebca42de034e0 Mon Sep 17 00:00:00 2001
 From: KunLong9 <105702843+KunLong9@users.noreply.github.com>
 Date: Thu, 16 Mar 2023 10:10:12 +0800
-Subject: [PATCH 5/7] apply patch from Renzhi to address memory issue (#26)
+Subject: [PATCH 5/7] apply patch to address memory issue (#26)
 
 ---
  .../include/intel_gpu/runtime/engine.hpp      |   3 +-
