@@ -66,6 +66,12 @@ else
   echo "ENABLE_OV_PATCH is not applicable for version $ov_version. Automatically set to false."
 fi
 
+# Configure oneDNN for GPU
+enable_onednn_for_gpu="ON"
+if [ "$ov_version" = "2022.3" ] && [ "$enable_ov_patch" = "true" ]; then
+  enable_onednn_for_gpu="OFF"
+fi
+
 docker build \
     --build-arg http_proxy=$http_proxy \
     --build-arg https_proxy=$https_proxy \
@@ -73,6 +79,7 @@ docker build \
     --build-arg PYTHON=python3.10 \
     --build-arg ENABLE_OV_PATCH=$enable_ov_patch \
     --build-arg OV_VERSION=$ov_version \
+    --build-arg ENABLE_ONEDNN_FOR_GPU=$enable_onednn_for_gpu \
     -f ./dockerfiles/$os_version/ov${ov_version}.dockerfile \
     -t ffmpeg_ivsr_sdk_${os_version}_ov${ov_version} \
     ../
