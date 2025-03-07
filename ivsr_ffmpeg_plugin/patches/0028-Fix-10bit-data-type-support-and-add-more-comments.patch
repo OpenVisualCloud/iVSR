@@ -1,0 +1,75 @@
+From 68894be1ebef7a48f56e60376d69c79276ad0f32 Mon Sep 17 00:00:00 2001
+From: Xie Lin <lin.xie@intel.com>
+Date: Tue, 4 Mar 2025 07:59:11 +0000
+Subject: [PATCH 28/28] Fix 10bit data type support and add more comments.
+
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 22 +++++++++++-----------
+ 1 file changed, 11 insertions(+), 11 deletions(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 0e4aef5152..a4c0faa4ab 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -103,8 +103,7 @@ static const AVOption dnn_ivsr_options[] = {
+     { "extension",  "extension lib file full path, usable for BasicVSR model", OFFSET(options.extension),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(options.op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "model_type",  "dnn model type", OFFSET(options.model_type),  AV_OPT_TYPE_INT,    { .i64 = 0 },     0, MODEL_TYPE_NUM - 1, FLAGS},
+-    //TODO: replace "normalize_factor" with "scale" as defined in openvino backend
+-    { "normalize_factor", "normalization factor", OFFSET(options.normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
++    { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(options.normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
+     { NULL }
+ };
+
+@@ -324,9 +323,10 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
+
+     input.data = request->in_frames;
+     in_data = input.data;
+-    //scale/mean can't be retrieved, so they're 0.0 by default
+-    // ff_proc_from_frame_to_dnn: uint_8->uint8 requires scale == 1 and mean == 0 and dt == UINT8
+-    input.scale = input.dt == DNN_UINT8 ? 1.0f : 0.0f;
++    // Set input mean/scale to meet the logic in func ff_proc_from_frame_to_dnn() @dnn_io_proc.c
++    // For *passthrough* cases, the OV backend can help to do the normalization.
++    // See `input_tensor_desc_set` in func ff_dnn_load_model_ivsr() in this file for more details.
++    input.scale = input.dt == DNN_FLOAT ? 0.0f : 1.0f;
+     input.mean  = 0.0f;
+
+     ctx->model_input_height = input.height;
+@@ -494,9 +494,9 @@ static void infer_completion_callback(void *args)
+     set_dnndata_info(&output, &output_tensor_desc_get);
+
+     output.data = request->out_frames;
+-    //scale/mean can't be retrieved, so they're 0.0 by default
++    // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
++    // FIXME: Apt to make mistakes when changes are made here!
+     output.mean     = 0.0f;
+-    // ff_proc_from_dnn_to_frame: float->uint8 require (scale == 255 or scale == 0) and mean == 0
+     output.scale    = output.dt == DNN_UINT8 ? 1.0f : 0.0f;
+     // set order based on model type
+     switch (ivsr_model->model_type)
+@@ -559,7 +559,7 @@ static void infer_completion_callback(void *args)
+                         //convert buffer from NCHW to NHWC
+                         convert_nchw_to_nhwc(output.data, 1, output.channels, output.height, output.width, output.dt);
+                     }
+-
++                    // For the outputs do not need normalization, normalization factor should be divided back. e.g. EDSR
+                     if (normalize_factor != 1 && output.dt == DNN_FLOAT &&
+                         (fabsf(output.scale - 1.0f) > 1e-6f || fabsf(output.scale) < 1e-6f)) {
+                         #pragma omp parallel for
+@@ -914,11 +914,11 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
+     }
+     // set element type of output for EDSR
+     if (ivsr_model->model_type == EDSR) {
+-	if (desc->comp[0].depth == 8) {
++        if (desc->comp[0].depth == 8) {
+             strcpy(output_tensor_desc_set.precision, "u8");
+-	} else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
+             strcpy(output_tensor_desc_set.precision, "u16");
+-	}
++        }
+     }
+     // customize layout for Basic_VSR and TSENet
+     if (ivsr_model->model_type == BASICVSR) {
+--
+2.34.1
