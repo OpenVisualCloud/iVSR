@@ -197,7 +197,8 @@ struct ivsr {
     std::vector<size_t> input_data_shape;  // shape of input data
 
     ivsr()
-        : threadExecutor(nullptr),
+        : inferEngine(nullptr),
+          threadExecutor(nullptr),
           patchSolution(false) {}
 
     // Define a constructor to initialize engine and other members if needed
@@ -339,6 +340,11 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     // Parse config for the inference engine
     std::map<std::string, ov::AnyMap> engine_configs;
     parse_engine_config(engine_configs, device, infer_precision, cldnn_config);
+
+    if (input_tensor_desc == nullptr || output_tensor_desc == nullptr) {
+        ivsr_status_log(IVSRStatus::GENERAL_ERROR, "Input or output tensor descriptor is null");
+        return IVSRStatus::GENERAL_ERROR;
+    }
 
     // Initialize inference engine
     auto ovEng = new ov_engine(device,
