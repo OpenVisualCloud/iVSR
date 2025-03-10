@@ -1,4 +1,4 @@
-From 45367468d592018fa13fc62cdd4478cbecaebaee Mon Sep 17 00:00:00 2001
+From b33b68931dfe246d8c5e127111f5caaa7c81ae19 Mon Sep 17 00:00:00 2001
 From: Xueshu Wang <xueshu.wang@intel.com>
 Date: Tue, 27 Aug 2024 18:11:35 +0800
 Subject: [PATCH] enable 10bit(for YUV) and 16bit(for RGB) support.
@@ -7,12 +7,12 @@ Subject: [PATCH] enable 10bit(for YUV) and 16bit(for RGB) support.
  libavfilter/dnn/dnn_backend_ivsr.c |  36 ++++++---
  libavfilter/dnn/dnn_io_proc.c      | 125 ++++++++++++++++++-----------
  libavfilter/dnn_interface.h        |   2 +-
- libavfilter/vf_dnn_processing.c    |  14 +++-
+ libavfilter/vf_dnn_processing.c    |  13 ++-
  libswscale/swscale_unscaled.c      | 110 +++++++++++++++++++++++++
- 5 files changed, 229 insertions(+), 58 deletions(-)
+ 5 files changed, 228 insertions(+), 58 deletions(-)
 
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
-index 9bee7d1277..550e64915a 100644
+index 1f7dfff743..997c1b803d 100644
 --- a/libavfilter/dnn/dnn_backend_ivsr.c
 +++ b/libavfilter/dnn/dnn_backend_ivsr.c
 @@ -103,7 +103,7 @@ static const AVOption dnn_ivsr_options[] = {
@@ -52,7 +52,7 @@ index 9bee7d1277..550e64915a 100644
      av_assert0(request->lltask_count <= dims[0]);
      av_assert0(request->lltask_count >= 1);
      for (int i = 0; i < request->lltask_count; ++i) {
-@@ -450,7 +454,7 @@ static void infer_completion_callback(void *args)
+@@ -449,7 +453,7 @@ static void infer_completion_callback(void *args)
                                  uint8_t min_x = 16, max_x = 235;
                                  for (int index = 0; index < tmp_frame->height * tmp_frame->linesize[0]; ++index) {
                                      uint8_t value = tmp_frame->data[0][index];
@@ -61,7 +61,7 @@ index 9bee7d1277..550e64915a 100644
                                  }
                              }
                              output.data +=
-@@ -476,11 +480,25 @@ static void infer_completion_callback(void *args)
+@@ -475,11 +479,25 @@ static void infer_completion_callback(void *args)
                                                filter_ctx);
                      // clamp output to [16, 235] range for Y plane when color range of output is TV range,
                      // assume model only process Y plane when output.channels = 1. AVCOL_RANGE_MPEG is mean tv range.
@@ -383,7 +383,7 @@ index b030995a9b..6d077b94d7 100644
  typedef enum {
      DCO_NONE,
 diff --git a/libavfilter/vf_dnn_processing.c b/libavfilter/vf_dnn_processing.c
-index 2b7656f21a..066b00a898 100644
+index 2b7656f21a..d9608324b2 100644
 --- a/libavfilter/vf_dnn_processing.c
 +++ b/libavfilter/vf_dnn_processing.c
 @@ -87,6 +87,9 @@ static const enum AVPixelFormat pix_fmts[] = {
@@ -413,11 +413,9 @@ index 2b7656f21a..066b00a898 100644
          if (model_input->channels != 1) {
              LOG_FORMAT_CHANNEL_MISMATCH();
              return AVERROR(EIO);
-@@ -197,13 +203,17 @@ static int prepare_uv_scale(AVFilterLink *outlink)
-                                                    SWS_BICUBIC, NULL, NULL, NULL);
+@@ -198,12 +204,15 @@ static int prepare_uv_scale(AVFilterLink *outlink)
                  ctx->sws_uv_height = inlink->h >> 1;
              } else {
-+                av_assert0(AV_PIX_FMT_YUV420P10LE || fmt == AV_PIX_FMT_YUV420P);
                  const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
 +                const AVComponentDescriptor comp = desc->comp[0];
                  int sws_src_h = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
@@ -434,7 +432,7 @@ index 2b7656f21a..066b00a898 100644
                  ctx->sws_uv_height = sws_src_h;
              }
 diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
-index a5c9917799..c87eb560d3 100644
+index a5c9917799..f46ecf718c 100644
 --- a/libswscale/swscale_unscaled.c
 +++ b/libswscale/swscale_unscaled.c
 @@ -1710,6 +1710,98 @@ static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
