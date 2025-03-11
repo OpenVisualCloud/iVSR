@@ -1,0 +1,43 @@
+From 7bf4f8f411dd8bb22e8d2f807533ff63c2ca6620 Mon Sep 17 00:00:00 2001
+From: Jerry Dong <jerry.dong@intel.com>
+Date: Thu, 6 Mar 2025 15:48:16 +0800
+Subject: [PATCH] 1) fix preprocessing to support different resolutions 2) move
+ TSENet's normalization to OpenVINO PPP
+
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 6 +++++-
+ libavfilter/dnn/dnn_io_proc.c      | 2 ++
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index df45ae18e2..b2d1323a1c 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -927,7 +927,11 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
+     } else if (ivsr_model->model_type == TSENET) {
+         //For TSENet, it's not typical N'C'HW, so do the NHWC->NCHW transion in plugin
+         strcpy(input_tensor_desc_set.layout, "NCHW");
+-        strcpy(input_tensor_desc_set.precision, "fp32");
++        if (desc->comp[0].depth == 8) {
++            strcpy(input_tensor_desc_set.precision, "u8");
++        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++            strcpy(input_tensor_desc_set.precision, "u16");
++        }
+     }
+     // set scale for non-float type of input
+     if (fabsf(ctx->options.normalize_factor - 1) < 1e-6f &&
+diff --git a/libavfilter/dnn/dnn_io_proc.c b/libavfilter/dnn/dnn_io_proc.c
+index 09fea90e20..79a6f66212 100644
+--- a/libavfilter/dnn/dnn_io_proc.c
++++ b/libavfilter/dnn/dnn_io_proc.c
+@@ -315,6 +315,8 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+                 goto err;
+             }
+             src_data = &middle_data;
++            //"linesize[]" is used for middle_data as AV_PIX_FMT_GRAY* format
++            linesize[0] = middle_data_linesize[0] * 3;
+             sws_ctx = sws_getContext(frame->width,
+                                      frame->height,
+                                      frame->format,
+--
+2.34.1
