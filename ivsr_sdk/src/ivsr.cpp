@@ -46,6 +46,7 @@ std::vector<std::string> parse_devices(const std::string& device_string) {
 }
 
 void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
+                         const size_t num_streams,
                          const std::string& device,
                          const std::string& infer_precision,
                          const std::string& cldnn_config) {
@@ -92,7 +93,13 @@ void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
         }
     }
     // update config per device
-    int nstream = 1;  // set nstream = 1 for GPU what about CPU?
+    /*
+     * Number of streams can help improve GPU throughput by allowing multiple inference requests to be processed in
+     * parallel. However, for CPU devices, configuring multiple streams may not provide significant performance benefits
+     * and could lead to increased context switching overhead. Therefore, we avoid configuring multiple streams for CPU
+     * devices to maintain optimal performance.
+     */
+    int nstream = num_streams;
     for (auto& d : devices) {
         auto& device_config = config[d];
         try {
@@ -230,6 +237,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     int reshape_h = 0, reshape_w = 0;
     std::unordered_map<std::string, std::string> config_map;
     size_t infer_request_num = 1;  // default infer_request_num set to 1
+    size_t num_streams = 1;  // default num_streams set to 1
     const tensor_desc_t *input_tensor_desc = nullptr;
     const tensor_desc_t *output_tensor_desc = nullptr;
 
@@ -318,6 +326,20 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
             case IVSRConfigKey::OUTPUT_TENSOR_DESC_SETTING:
                 output_tensor_desc = static_cast<const tensor_desc_t *>(configs->value);
                 break;
+            case IVSRConfigKey::NUM_STREAMS:
+                try {
+                    auto num = std::stoul(static_cast<const char*>(configs->value));
+                    if (num > num_streams)
+                        num_streams = num;
+                    std::cout << "[INFO] set num of streams: " << num_streams << std::endl;
+                } catch (const std::invalid_argument& e) {
+                    std::cerr << "[ERROR] Invalid argument for NUM_STREAMS: "
+                              << static_cast<const char*>(configs->value) << std::endl;
+                } catch (const std::out_of_range& e) {
+                    std::cerr << "[ERROR] Out of range value for NUM_STREAMS: "
+                              << static_cast<const char*>(configs->value) << std::endl;
+                }
+                break;
             default:
                 unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
                 unsupported_output = std::to_string(configs->key);
@@ -339,7 +361,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
 
     // Parse config for the inference engine
     std::map<std::string, ov::AnyMap> engine_configs;
-    parse_engine_config(engine_configs, device, infer_precision, cldnn_config);
+    parse_engine_config(engine_configs, num_streams, device, infer_precision, cldnn_config);
 
     if (input_tensor_desc == nullptr || output_tensor_desc == nullptr) {
         ivsr_status_log(IVSRStatus::GENERAL_ERROR, "Input or output tensor descriptor is null");
