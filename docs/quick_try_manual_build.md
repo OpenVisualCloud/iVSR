@@ -81,7 +81,7 @@ git config --global user.email "noname@example.com"
 git config --global user.name "no name"
 git clone https://github.com/FFmpeg/FFmpeg.git <workspace>/ivsr/ivsr_ffmpeg_plugin/ffmpeg
 cd <workspace>/ivsr/ivsr_ffmpeg_plugin/ffmpeg
-git checkout n6.1
+git checkout n7.1
 
 # Apply patches
 cp -rf <workspace>/ivsr/ivsr_ffmpeg_plugin/patches/*.patch .

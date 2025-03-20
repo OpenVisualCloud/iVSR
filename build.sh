@@ -113,7 +113,7 @@ build_ffmpeg() {
   ffmpeg_repo=https://github.com/FFmpeg/FFmpeg.git
 
   if [ ! -d "${ffmpeg_dir}" ]; then
-    git clone --depth 1 --branch n6.1 ${ffmpeg_repo} ${ffmpeg_dir}
+    git clone --depth 1 --branch n7.1 ${ffmpeg_repo} ${ffmpeg_dir}
     git config --global --add safe.directory ${ffmpeg_dir}
   fi
 

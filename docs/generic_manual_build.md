@@ -25,11 +25,11 @@ make
 make install
 ```
 ### 5. Build FFmpeg with iVSR plugin
-We provide patches specifically for FFmpeg n6.1. Apply these patches as instructed below:
+We provide patches specifically for FFmpeg n7.1. Apply these patches as instructed below:
 ```bash
 git clone https://github.com/FFmpeg/FFmpeg.git ./ivsr_ffmpeg_plugin/ffmpeg
 cd ./ivsr_ffmpeg_plugin/ffmpeg
-git checkout n6.1
+git checkout n7.1
 cp ../patches/*.patch ./
 for patch_file in $(find -iname "*.patch" | sort -n); do \
     echo "Applying: ${patch_file}";                      \

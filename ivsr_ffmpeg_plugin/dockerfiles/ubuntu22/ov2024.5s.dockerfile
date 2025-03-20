@@ -94,7 +94,7 @@ RUN mkdir -p build && cd build && \
 # Build and install FFmpeg with libopenvino support
 # FFmpeg setup and build
 ARG FFMPEG_REPO=https://github.com/FFmpeg/FFmpeg.git
-ARG FFMPEG_VERSION=n6.1
+ARG FFMPEG_VERSION=n7.1
 ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${WORKSPACE}/ivsr/ivsr_ffmpeg_plugin
 WORKDIR ${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
 RUN git config --global user.email "noname@example.com" && \
