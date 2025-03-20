@@ -1,0 +1,64 @@
+From 1a897d58a89decf31b86853939ec6c2d6bcc8f89 Mon Sep 17 00:00:00 2001
+From: Xie Lin <lin.xie@intel.com>
+Date: Thu, 20 Mar 2025 01:36:54 +0000
+Subject: [PATCH 30/30] Add option to set number of streams
+
+Signed-off-by: Xie Lin <lin.xie@intel.com>
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 13 +++++++++++--
+ 1 file changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 2956014ae9..2a1630e791 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -52,6 +52,7 @@ typedef struct IVSROptions {
+     int model_type;
+     float normalize_factor;
+     char *reshape_values;
++    int num_streams;
+ } IVSROptions;
+
+ typedef struct IVSRContext {
+@@ -104,6 +105,7 @@ static const AVOption dnn_ivsr_options[] = {
+     { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(options.op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "model_type",  "dnn model type", OFFSET(options.model_type),  AV_OPT_TYPE_INT,    { .i64 = 0 },     0, MODEL_TYPE_NUM - 1, FLAGS},
+     { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(options.normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
++    { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(options.num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
+     { NULL }
+ };
+
+@@ -795,6 +797,7 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
+     ivsr_config_t *config_reshape = NULL;
+     ivsr_config_t *config_input_res = NULL;
+     ivsr_config_t *config_nireq = NULL;
++    ivsr_config_t *config_nstreams = NULL;
+     int nif = 0;
+     ivsr_config_t *config_input_tensor = NULL;
+     ivsr_config_t *config_output_tensor = NULL;
+@@ -1029,15 +1032,21 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
+     if (config_reshape == NULL)
+         goto err;
+
++    char nstreams_string[40] = {0};
++    sprintf(nstreams_string, "%d", ctx->options.num_streams);
++    config_nstreams = create_and_link_config(config_reshape, NUM_STREAMS, nstreams_string, ctx);
++    if (config_nstreams == NULL)
++        goto err;
++
+     if (ctx->options.extension != NULL) {
+-        config_customlib = create_and_link_config(config_reshape, CUSTOM_LIB, ctx->options.extension, ctx);
++        config_customlib = create_and_link_config(config_nstreams, CUSTOM_LIB, ctx->options.extension, ctx);
+         if (config_customlib == NULL)
+             goto err;
+     }
+
+     if (ctx->options.op_xml != NULL) {
+         config_cldnn = create_and_link_config(ctx->options.extension != NULL ?
+-                                              config_customlib : config_reshape,
++                                              config_customlib : config_nstreams,
+                                               CLDNN_CONFIG, ctx->options.op_xml, ctx);
+         if (config_cldnn == NULL)
+             goto err;
+--
+2.34.1
