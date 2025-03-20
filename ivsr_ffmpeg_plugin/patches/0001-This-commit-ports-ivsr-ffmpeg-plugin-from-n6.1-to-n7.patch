@@ -1,0 +1,2511 @@
+From dd75c70cf729b1c67121f7205f0e5788fd4f5cd0 Mon Sep 17 00:00:00 2001
+From: Jerry Dong <jerry.dong@intel.com>
+Date: Wed, 19 Feb 2025 15:13:17 +0800
+Subject: [PATCH] This commit ports ivsr ffmpeg plugin from n6.1 to n7.1, it is
+ based on the following commits: Add iVSR SDK build dependency and backend
+ interfaces (by Cheng Zhang) Add iVSR SDK as dnn processing backend (by Cheng
+ Zhang) Free ivsr model in deinit function (by Cheng Zhang) Support new model
+ type in dnn_ivsr backend (by Lin Xie) Enable the support for SVP and EDSR (by
+ Cheng Zhang) Enable model reshape without command line input (by Xueshu Wang)
+ Support new model in dnn_ivsr backend (by Xiaoxia Liang) dnn_backend_ivsr:
+ Fixed the bug which do execute_model_ivsr before doing inference for first
+ frame. (by Xiaoxia Liang) dnn_backend_ivsr: Replaced if/else with switch for
+ model_type checking (by Xiaoxia Liang) Solve the double free (by Xueshu Wang)
+ Initalize scale & mean of input&output (by Xueshu Wang) dnn_backend_ivsr:
+ refine extension and op_xml paramters into option not required. (by Xiaoxia
+ Liang) refine ivsr plugin: 1)incorrect configure of nb_inputs, 2)remove
+ useless input parameter. (by Jerry Dong) ivsr plugin: remove useless input
+ parameters. (by Xiaoxia Liang) 1)Update calling of ivsr_process API. 2)add
+ new config INPUT_RES (by Jerry Dong) Preview: enable TSENet model in ivsr
+ plugin. (by Jerry Dong) ivsr_dnn_backend: clamp output value to limited
+ range[16, 235] when color range of output frame is tv range.(by Xiaoxia
+ Liang) dnn_backend_ivsr: fix coverity issues. (by Xiaoxia Liang)
+ dnn_ivsr_backend: optimized layout conversion(nchw <-> nhwc) with openmp. (by
+ Xiaoxia Liang) dnn_ivsr_backend: process non-8 aligned resolution to make the
+ video processing model can run at any resoultion. (by Xiaoxia Liang) Enable
+ async request infer and refine the config setting (by Lin Xie) enable
+ 10bit(for YUV) and 16bit(for RGB) support. (by Xueshu Wang) enable
+ PrePostProcessing of OpenVINO in dnn_backend_ivsr (by Xiaoxia Liang) refine
+ RESHAPE_SETTINGS; support Y-input SVP model (by Jerry Dong) dnn_backend_ivsr:
+ change aligned size to 64 from 8 (by Xiaoxia Liang) Using plugin to do model
+ preprocessing for TSENet. (by Jerry Dong) Set element type of output for EDSR
+ model. (by Xiaoxia Liang) Fix 10bit data type support and add more comments
+ (by Lin Xie) fix preprocessing to support different resolutions (by Jerry
+ Dong) Add option to set number of streams (by Lin Xie)
+
+---
+ configure                            |    6 +-
+ libavfilter/dnn/Makefile             |    1 +
+ libavfilter/dnn/dnn_backend_common.c |    2 +
+ libavfilter/dnn/dnn_backend_common.h |    2 +
+ libavfilter/dnn/dnn_backend_ivsr.c   | 1305 ++++++++++++++++++++++++++
+ libavfilter/dnn/dnn_backend_ivsr.h   |   40 +
+ libavfilter/dnn/dnn_interface.c      |   13 +
+ libavfilter/dnn/dnn_io_proc.c        |  221 ++++-
+ libavfilter/dnn_filter_common.c      |   12 +
+ libavfilter/dnn_interface.h          |   37 +-
+ libavfilter/vf_dnn_processing.c      |  205 ++--
+ libswscale/swscale_unscaled.c        |  110 +++
+ 12 files changed, 1846 insertions(+), 108 deletions(-)
+ create mode 100644 libavfilter/dnn/dnn_backend_ivsr.c
+ create mode 100644 libavfilter/dnn/dnn_backend_ivsr.h
+
+diff --git a/configure b/configure
+index d77a55b653..977cc94b60 100755
+--- a/configure
++++ b/configure
+@@ -258,6 +258,8 @@ External library support:
+   --enable-libopenmpt      enable decoding tracked files via libopenmpt [no]
+   --enable-libopenvino     enable OpenVINO as a DNN module backend
+                            for DNN based filters like dnn_processing [no]
++  --enable-libivsr         enable iVSR SDK as a DNN module backend
++                           for DNN based Super Resolution filters [no]
+   --enable-libopus         enable Opus de/encoding via libopus [no]
+   --enable-libplacebo      enable libplacebo library [no]
+   --enable-libpulse        enable Pulseaudio input via libpulse [no]
+@@ -1940,6 +1942,7 @@ EXTERNAL_LIBRARY_LIST="
+     libopenjpeg
+     libopenmpt
+     libopenvino
++    libivsr
+     libopus
+     libplacebo
+     libpulse
+@@ -2851,7 +2854,7 @@ dirac_parse_select="golomb"
+ dovi_rpudec_select="golomb"
+ dovi_rpuenc_select="golomb"
+ dnn_deps="avformat swscale"
+-dnn_deps_any="libtensorflow libopenvino libtorch"
++dnn_deps_any="libtensorflow libopenvino libtorch libivsr"
+ error_resilience_select="me_cmp"
+ evcparse_select="golomb"
+ faandct_deps="faan"
+@@ -6969,6 +6972,7 @@ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.65
+ enabled libopenvino       && { { check_pkg_config libopenvino openvino openvino/c/openvino.h ov_core_create && enable openvino2; } ||
+                                 { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
+                                   require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; } }
++enabled libivsr           && require libivsr ivsr.h ivsr_init -livsr
+ enabled libopus           && {
+     enabled libopus_decoder && {
+         require_pkg_config libopus opus opus_multistream.h opus_multistream_decoder_create
+diff --git a/libavfilter/dnn/Makefile b/libavfilter/dnn/Makefile
+index 3d09927c98..87c0ff19d8 100644
+--- a/libavfilter/dnn/Makefile
++++ b/libavfilter/dnn/Makefile
+@@ -7,5 +7,6 @@ OBJS-$(CONFIG_DNN)                           += dnn/dnn_backend_common.o
+ DNN-OBJS-$(CONFIG_LIBTENSORFLOW)             += dnn/dnn_backend_tf.o
+ DNN-OBJS-$(CONFIG_LIBOPENVINO)               += dnn/dnn_backend_openvino.o
+ DNN-OBJS-$(CONFIG_LIBTORCH)                  += dnn/dnn_backend_torch.o
++DNN-OBJS-$(CONFIG_LIBIVSR)                   += dnn/dnn_backend_ivsr.o
+
+ OBJS-$(CONFIG_DNN)                           += $(DNN-OBJS-yes)
+diff --git a/libavfilter/dnn/dnn_backend_common.c b/libavfilter/dnn/dnn_backend_common.c
+index e45eefd14d..0f42632de8 100644
+--- a/libavfilter/dnn/dnn_backend_common.c
++++ b/libavfilter/dnn/dnn_backend_common.c
+@@ -60,6 +60,8 @@ int ff_dnn_fill_task(TaskItem *task, DNNExecBaseParams *exec_params, void *backe
+     task->input_name = exec_params->input_name;
+     task->in_frame = exec_params->in_frame;
+     task->out_frame = exec_params->out_frame;
++    task->in_queue = exec_params->in_queue;
++    task->out_queue = exec_params->out_queue;
+     task->model = backend_model;
+     task->nb_output = exec_params->nb_output;
+     task->output_names = exec_params->output_names;
+diff --git a/libavfilter/dnn/dnn_backend_common.h b/libavfilter/dnn/dnn_backend_common.h
+index 9f5d37b3e0..a85dd09f59 100644
+--- a/libavfilter/dnn/dnn_backend_common.h
++++ b/libavfilter/dnn/dnn_backend_common.h
+@@ -44,6 +44,8 @@ typedef struct TaskItem {
+     void *model; // model for the backend
+     AVFrame *in_frame;
+     AVFrame *out_frame;
++    AVFifo *in_queue;
++    AVFifo *out_queue;
+     const char *input_name;
+     const char **output_names;
+     uint8_t async;
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+new file mode 100644
+index 0000000000..0e64c14a47
+--- /dev/null
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -0,0 +1,1305 @@
++/*
++ * Copyright (c) 2020
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++/**
++ * @file
++ * DNN iVSR SDK backend implementation.
++ */
++
++#include "dnn_backend_ivsr.h"
++#include "dnn_io_proc.h"
++#include "libavutil/imgutils.h"
++#include "libavformat/avio.h"
++#include "libavutil/avassert.h"
++#include "libavutil/cpu.h"
++#include "libavutil/mem.h"
++#include "libavutil/opt.h"
++#include "libavutil/avstring.h"
++#include "safe_queue.h"
++#include "libavutil/fifo.h"
++#include "ivsr.h"
++#include "dnn_backend_common.h"
++#include <string.h>
++#include <omp.h>
++
++
++#define DNN_MORE_FRAMES FFERRTAG('M','O','R','E')
++
++typedef enum {
++    UNKNOWN_MODEL = -1,
++    BASICVSR,
++    VIDEOPROC,
++    EDSR,
++    CUSTVSR,
++    TSENET,
++    MODEL_TYPE_NUM
++} ModelType;
++
++typedef struct IVSRModel {
++    DNNModel model;
++    DnnContext *ctx;
++    ivsr_config_t *config;
++    ivsr_handle handle;
++    SafeQueue *request_queue;
++    Queue *task_queue;
++    Queue *lltask_queue;
++    ModelType model_type;
++    int nif; //how many frames in IVSRRequestItem::in_frames
++    AVFifo *frame_queue; //input frames queue
++} IVSRModel;
++
++typedef struct IVSRRequestItem {
++    void *in_frames;
++    void *out_frames;
++    LastLevelTaskItem **lltasks;
++    uint32_t lltask_count;
++    ivsr_cb_t cb;
++} IVSRRequestItem;
++
++#define OFFSET(x) offsetof(iVSROptions, x)
++#define FLAGS AV_OPT_FLAG_FILTERING_PARAM
++static const AVOption dnn_ivsr_options[] = {
++    { "batch_size",  "batch size per request, NOT usable for BasicVSR model", OFFSET(batch_size),  AV_OPT_TYPE_INT,    { .i64 = 1 },     1, 1000, FLAGS},
++    { "extension",  "extension lib file full path, usable for BasicVSR model", OFFSET(extension),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
++    { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
++    { "model_type",  "dnn model type", OFFSET(model_type),  AV_OPT_TYPE_INT,    { .i64 = 0 },     0, MODEL_TYPE_NUM - 1, FLAGS},
++    { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
++    { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
++    { NULL }
++};
++
++#define ALIGNED_SIZE 64
++
++static int get_datatype_size(DNNDataType dt)
++{
++    switch (dt) {
++    case DNN_FLOAT:
++        return sizeof(float);
++    case DNN_UINT8:
++        return sizeof(uint8_t);
++    case DNN_UINT16:
++        return sizeof(uint16_t);
++    default:
++        av_assert0(!"not supported yet.");
++        return 1;
++    }
++}
++
++static DNNColorOrder map_dnn_color_order(int format) {
++    switch (format)
++    {
++    case AV_PIX_FMT_RGB24:
++    case AV_PIX_FMT_RGB48:
++        return DCO_RGB;
++    case AV_PIX_FMT_BGR24:
++    case AV_PIX_FMT_BGR48:
++        return DCO_BGR;
++    default:
++        return DCO_NONE;
++    }
++}
++
++static int clamp(int val, int min, int max) {
++    if (val < min)
++        return min;
++    else if (val > max)
++        return max;
++    else
++        return val;
++}
++
++static void convert_nchw_to_nhwc(void* data, int N, int C, int H, int W, DNNDataType type) {
++    int data_size = N * C * H * W;
++    int type_size = get_datatype_size(type);
++    data_size = data_size * type_size;
++    uint8_t *temp = av_malloc(data_size);
++    int max_threads = omp_get_num_procs() / 2;
++    // memory copy
++    #pragma omp parallel for num_threads(max_threads)
++    for (int i = 0; i < data_size; i++)
++        temp[i] = ((uint8_t*)data)[i];
++
++    // convert buffer from nchw to nhwc
++    #pragma omp parallel num_threads(max_threads)
++    {
++        for (int n = 0; n < N; n++)
++            for (int h = omp_get_thread_num(); h < H; h += omp_get_num_threads())
++                for (int w = 0; w < W; w++)
++                    for (int c = 0; c < C; c++) {
++                        for (int byte = 0; byte < type_size; ++byte)
++                            ((uint8_t*)data)[(n * H * W * C + h * W * C + w * C + c) * type_size + byte] =
++                                temp[(n * C * H * W + c * H * W + h * W + w) * type_size + byte];
++                    }
++    }
++    av_free(temp);
++}
++
++static void convert_nhwc_to_nchw(void* data, int N, int C, int H, int W, DNNDataType type) {
++    int data_size = N * C * H * W;
++    int type_size = get_datatype_size(type);
++    data_size = data_size * type_size;
++    uint8_t *temp = av_malloc(data_size);
++    int max_threads = omp_get_num_procs() / 2;
++    // memory copy
++    #pragma omp parallel for num_threads(max_threads)
++    for (int i = 0; i < data_size; i++)
++        temp[i] = ((uint8_t*)data)[i];
++
++    // convert buffer from nhwc to nchw
++    #pragma omp parallel num_threads(max_threads)
++    {
++        for (int n = 0; n < N; n++)
++            for (int h = omp_get_thread_num(); h < H; h += omp_get_num_threads())
++                for (int w = 0; w < W; w++)
++                    for (int c = 0; c < C; c++) {
++                        for (int byte = 0; byte < type_size; ++byte)
++                            ((uint8_t*)data)[(n * C * H * W + c * H * W + h * W + w) * type_size + byte] =
++                                temp[(n * H * W * C + h * W * C + w * C + c) * type_size + byte];
++                    }
++    }
++    av_free(temp);
++}
++
++/**
++ * set value for padding right and bottom.
++ */
++static void set_padding_value(void* data, uint32_t width, uint32_t height, uint32_t padding_width, uint32_t padding_height, int padding_value) {
++    int n_width = width + padding_width;
++    for (int h = 0; h < height; ++h) {
++        int index = h * (n_width) + width;
++        memset(data + index, padding_value, padding_width);
++    }
++
++    int index = height * n_width;
++    memset(data + index, padding_value, padding_height * n_width);
++}
++
++static size_t get_tensor_size(const tensor_desc_t* tensor) {
++    size_t tensor_size = 0;
++    size_t data_type_size = 0;
++    if (NULL == tensor || tensor->dimension <= 0)
++        return 0;
++
++    if (strcmp(tensor->precision, "u8") == 0) {
++        data_type_size = sizeof(uint8_t);
++    } else if (strcmp(tensor->precision, "u16") == 0) {
++        data_type_size = sizeof(uint16_t);
++    } else if (strcmp(tensor->precision, "f32") == 0) {
++        data_type_size = sizeof(float);
++    } else {
++        av_assert0(!"not supported the precision yet.");
++        return 1;
++    }
++
++    tensor_size = data_type_size;
++    for (int i = 0; i < tensor->dimension; ++i) {
++        tensor_size *= tensor->shape[i];
++    }
++    return tensor_size;
++}
++/*
++ * set layout, precision, width, height and channels info accorring to tensor info
++*/
++static void set_dnndata_info(DNNData *dnn_data, const tensor_desc_t* tensor) {
++    if (NULL == dnn_data || NULL == tensor)
++        return;
++
++    // set layout, dims[], and width, height and channels
++    if (strcmp(tensor->layout, "NHWC") == 0 || strcmp(tensor->layout, "[N,H,W,C]") == 0) {
++        dnn_data->layout   = DL_NHWC;
++        dnn_data->channels = dnn_data->dims[3] = tensor->shape[3];
++        dnn_data->height   = dnn_data->dims[1] = tensor->shape[1];
++        dnn_data->width    = dnn_data->dims[2] = tensor->shape[2];
++        dnn_data->dims[0]  = 1;
++    } else if (strcmp(tensor->layout, "NCHW") == 0 || strcmp(tensor->layout, "[N,C,H,W]") == 0) {
++        dnn_data->layout   = DL_NCHW;
++        dnn_data->channels = dnn_data->dims[1] = tensor->shape[1];
++        dnn_data->height   = dnn_data->dims[2] = tensor->shape[2];
++        dnn_data->width    = dnn_data->dims[3] = tensor->shape[3];
++        dnn_data->dims[0]  = 1;
++    } else if (strcmp(tensor->layout, "NFHWC") == 0 || strcmp(tensor->layout, "[N,F,H,W,C]") == 0) {
++        dnn_data->layout   = DL_NHWC;
++        dnn_data->channels = dnn_data->dims[3] = tensor->shape[4];
++        dnn_data->height   = dnn_data->dims[1] = tensor->shape[2];
++        dnn_data->width    = dnn_data->dims[2] = tensor->shape[3];
++        dnn_data->dims[0]  = 1;
++    } else if (strcmp(tensor->layout, "NFCHW") == 0 || strcmp(tensor->layout, "[N,F,C,H,W]") == 0) {
++        dnn_data->layout   = DL_NCHW;
++        dnn_data->channels = dnn_data->dims[1] = tensor->shape[2];
++        dnn_data->height   = dnn_data->dims[2] = tensor->shape[3];
++        dnn_data->width    = dnn_data->dims[3] = tensor->shape[4];
++        dnn_data->dims[0]  = 1;
++    } else {
++        av_assert0(!"DNNData not supported the layout yet.");
++        return;
++    }
++
++    // set precision
++    if (strcmp(tensor->precision, "f32") == 0 || strcmp(tensor->precision, "fp32") == 0) {
++        dnn_data->dt = DNN_FLOAT;
++    } else if (strcmp(tensor->precision, "u8") == 0) {
++        dnn_data->dt = DNN_UINT8;
++    } else if (strcmp(tensor->precision, "u16") == 0){
++        dnn_data->dt = DNN_UINT16;
++    } else {
++        av_assert0(!"DNNData not supported the precision yet.");
++        return;
++    }
++}
++
++/* returns
++ *     DNN_GENERIC_ERROR,
++ *     DNN_MORE_FRAMES - waiting for more input frames,
++ *     AVERROR(*),
++ *     0 - successful
++ */
++static int fill_model_input_ivsr(IVSRModel * ivsr_model,
++                                 IVSRRequestItem * request)
++{
++    DnnContext *ctx = ivsr_model->ctx;
++    IVSRStatus status;
++    DNNData input;
++    LastLevelTaskItem *lltask;
++    TaskItem *task;
++    AVFrame *tmp_frame = NULL;
++    void *in_data = NULL;
++    float normalize_factor = ctx->ivsr_option.normalize_factor;
++    int padding_height = 0, padding_width = 0;
++    tensor_desc_t input_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++
++    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
++        return DNN_GENERIC_ERROR;
++    }
++
++    set_dnndata_info(&input, &input_tensor_desc_get);
++    if (ivsr_model->model_type == TSENET) {
++        input.dims[dnn_get_channel_idx_by_layout(input.layout)] /= 3;
++        input.channels = input.channels / 3;
++    }
++
++    input.data = request->in_frames;
++    in_data = input.data;
++    // Set input mean/scale to meet the logic in func ff_proc_from_frame_to_dnn() @dnn_io_proc.c
++    // For *passthrough* cases, the OV backend can help to do the normalization.
++    // See `input_tensor_desc_set` in func ff_dnn_load_model_ivsr() in this file for more details.
++    input.scale = input.dt == DNN_FLOAT ? 0.0f : 1.0f;
++    input.mean  = 0.0f;
++
++    ctx->ivsr_option.model_input_height = input.height;
++    ctx->ivsr_option.model_input_width = input.width;
++
++    padding_height = ctx->ivsr_option.model_input_height - ctx->ivsr_option.frame_input_height;
++    padding_width  = ctx->ivsr_option.model_input_width - ctx->ivsr_option.frame_input_width;
++    for (int i = 0; i < ctx->ivsr_option.batch_size; ++i) {
++        // INFO: for TSENET, lltask_queue contains (N-1)th and (N)th frames
++        // so peek (N)th frame.
++        lltask = ff_queue_peek_back(ivsr_model->lltask_queue);
++        if (!lltask) {
++            break;
++        }
++        task = lltask->task;
++        // the color order of input DNNData is same as format of in frame
++        input.order = map_dnn_color_order(task->in_frame->format);
++
++        if (task->do_ioproc) {
++            if (ivsr_model->model.frame_pre_proc != NULL) {
++                ivsr_model->model.frame_pre_proc(task->in_frame, &input,
++                                                  ivsr_model->model.filter_ctx);
++            } else {
++	        // reset bottom and right to 0 when size of input frame < model required.
++                if (padding_height > 0 || padding_width > 0) {
++                    uint32_t padding_width_bytes = (padding_width) * input.channels * get_datatype_size(input.dt);
++                    for (int i = 0; i < ivsr_model->nif; ++i) {
++                        set_padding_value(input.data,
++                                          ctx->ivsr_option.frame_input_width * input.channels * get_datatype_size(input.dt),
++                                          ctx->ivsr_option.frame_input_height,
++                                          padding_width_bytes, padding_height, 0);
++                        input.data +=
++                              input.height * input.width *
++                              input.channels * get_datatype_size(input.dt);
++                    }
++                    input.data = in_data;
++                }
++                if (ivsr_model->model_type == BASICVSR && ivsr_model->nif != 1) {
++                    int read_frame_num = 0;
++                    for (int j = 0; j < ivsr_model->nif; j++) {
++                        if (av_fifo_can_read(task->in_queue)) {
++                            av_fifo_read(task->in_queue, &tmp_frame, 1);
++                            ff_proc_from_frame_to_dnn(tmp_frame, &input,
++                                                      ivsr_model->model.filter_ctx);
++                            // convert buffer from NHWC to NCHW when C != 1
++                            if (input.channels != 1 && input.layout == DL_NONE )
++                                convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
++                            input.data +=
++                                input.height * input.width *
++                                input.channels * get_datatype_size(input.dt);
++                            read_frame_num++;
++                        }
++                    }
++                    input.data = in_data;
++                    if (read_frame_num < ivsr_model->nif)
++                        av_log(ctx, AV_LOG_ERROR,
++                               "Read frame number is %d less than the model requirement %d!!!\n",
++                               read_frame_num, ivsr_model->nif);
++                } else if (ivsr_model->model_type == TSENET) {
++                    //1. copy the input_frame(ref the buffer) and put into ivsr_model->fame_queue
++                    tmp_frame = av_frame_alloc();
++                    if(av_frame_ref(tmp_frame, task->in_frame) < 0) {
++                        return AVERROR(ENOMEM);
++                    }
++
++                    av_fifo_write(ivsr_model->frame_queue, &tmp_frame, 1);
++                    static int frame_num = 0;
++                    if (frame_num == 0) {
++                        //For the first pic in the stream
++                        tmp_frame = av_frame_alloc();
++                        if(av_frame_ref(tmp_frame, task->in_frame) < 0) {
++                            return AVERROR(ENOMEM);
++                        }
++                        av_fifo_write(ivsr_model->frame_queue, &tmp_frame, 1);
++                        frame_num++;
++                    }
++                    //2. check if queue size is >= nif
++                    if (av_fifo_can_read(ivsr_model->frame_queue) >= ivsr_model->nif) {
++                        //2.1 prepare dnn data into request
++                        av_assert0(av_fifo_can_read(ivsr_model->frame_queue) == ivsr_model->nif);
++                        AVFrame **input_frames = av_mallocz(sizeof(AVFrame *) * ivsr_model->nif);
++                        av_fifo_peek(ivsr_model->frame_queue, input_frames, ivsr_model->nif, 0);
++                        for (int idx = 0; idx < ivsr_model->nif; idx++) {
++                            //INFO: the 3 frames in frame_queue are: (N-2)th, (N-1)th, (N)th
++                            ff_proc_from_frame_to_dnn(input_frames[idx], &input, ivsr_model->model.filter_ctx);
++                            //NHWC->NCHW was processed in ff_proc_from_frame_to_dnn() if input.layout is set
++                            if (input.channels != 1 && input.layout == DL_NONE )
++                                convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
++                            input.data += input.height * input.width * input.channels * get_datatype_size(input.dt);
++                        }
++                        input.data = in_data;
++                        //pop the (N-2)th frame from frame_queue and free it
++                        av_fifo_read(ivsr_model->frame_queue, &tmp_frame, 1);
++                        av_frame_unref(tmp_frame);
++                        av_frame_free(&tmp_frame);
++                        // INFO: for the last frame, peek_back and pop_front get the same frame, so don't have to handle EOS specifically
++                    } else {
++                        return DNN_MORE_FRAMES;
++                    }
++                } else {
++                    // ff_proc_from_frame_to_dnn will perform normalization by calling
++                    // uint_y_to_float_y_wrapper in swscale_unscaled.c
++                    // So, for the inputs do not need normalization, normalization facotr should be multiplied back.
++                    // Same to ff_proc_from_dnn_to_frame.
++                    ff_proc_from_frame_to_dnn(task->in_frame, &input,
++                                              ivsr_model->model.filter_ctx);
++                    if (input.channels != 1 && (input.layout == DL_NONE)) {
++                        convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
++                    }
++
++                    if (normalize_factor != 1 && input.dt == DNN_FLOAT &&
++                        (fabsf(input.scale - 1.0f) > 1e-6f || fabsf(input.scale) < 1e-6f)) {
++                        // do not need to covert buffer from NHWC to NCHW if the channels is 1, only need to mulitple normalize_factor
++                        #pragma omp parallel for
++                        for (int pos = 0; pos < input.height * input.width * input.channels; pos++) {
++                            ((float*)input.data)[pos] = ((float*)input.data)[pos] * normalize_factor;
++                        }
++                    }
++                }
++            }
++            // pop "front" lltask from lltask_queue
++            // INFO: for TSENet, it points to (N-1)th frame; for other model, it points to (N)th frame.
++            lltask = ff_queue_pop_front(ivsr_model->lltask_queue);
++            request->lltasks[i] = lltask;
++            request->lltask_count = i + 1;
++        }
++        input.data =
++            (uint8_t *) input.data +
++            input.width * input.height * input.channels *
++            get_datatype_size(input.dt);
++    }
++    return 0;
++}
++
++static void infer_completion_callback(void *args)
++{
++    IVSRStatus status;
++    IVSRRequestItem *request = args;
++    LastLevelTaskItem *lltask = request->lltasks[0];
++    TaskItem *task = lltask->task;
++    IVSRModel *ivsr_model = task->model;
++    SafeQueue *requestq = ivsr_model->request_queue;
++    DNNData output;
++    DnnContext *ctx = ivsr_model->ctx;
++    AVFrame *tmp_frame = NULL;
++    int offset = 0;
++    float normalize_factor = ctx->ivsr_option.normalize_factor;
++    tensor_desc_t output_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++
++    // ivsr_get_attr can only get precision, layout, dimension and shape info
++    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
++        return;
++    }
++
++    set_dnndata_info(&output, &output_tensor_desc_get);
++
++    output.data = request->out_frames;
++    // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
++    // FIXME: Apt to make mistakes when changes are made here!
++    output.mean     = 0.0f;
++    output.scale    = output.dt == DNN_UINT8 ? 1.0f : 0.0f;
++    // set order based on model type
++    switch (ivsr_model->model_type)
++    {
++    case BASICVSR:
++    case VIDEOPROC:
++    case EDSR:
++    case TSENET:
++        output.order = DCO_RGB;
++        break;
++    default:
++        output.order = DCO_NONE;
++        break;
++    }
++
++    const AVPixFmtDescriptor* pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
++    const AVComponentDescriptor* comp_desc = &pix_desc->comp[0];
++    int bits = comp_desc->depth;
++    av_assert0(request->lltask_count <= output_tensor_desc_get.shape[0]);
++    av_assert0(request->lltask_count >= 1);
++    for (int i = 0; i < request->lltask_count; ++i) {
++        task = request->lltasks[i]->task;
++
++        if (task->do_ioproc) {
++            if (ivsr_model->model.frame_post_proc != NULL) {
++                ivsr_model->model.frame_post_proc(task->out_frame,
++                                                   &output,
++                                                   ivsr_model->model.filter_ctx);
++            } else {
++                if (ivsr_model->model_type == BASICVSR && ivsr_model->nif != 1) {
++                    do {
++                        int ret =
++                            av_fifo_peek(task->out_queue, &tmp_frame, 1,
++                                         offset);
++                        if (ret == 0) {
++                            if (output.channels != 1 && output.layout == DL_NONE) {
++                                convert_nchw_to_nhwc(output.data, 1, output.channels, output.height, output.width, output.dt);
++                            }
++                            ff_proc_from_dnn_to_frame(tmp_frame, &output,
++                                                      &ivsr_model->model.filter_ctx);
++                            // clamp output to [16, 235] range for Y plane when color range of output is TV range,
++                            // assume model only process Y plane when output.channels = 1. AVCOL_RANGE_MPEG is mean tv range.
++                            if (tmp_frame->color_range == AVCOL_RANGE_MPEG && output.channels == 1) {
++                                uint8_t min_x = 16, max_x = 235;
++                                for (int index = 0; index < tmp_frame->height * tmp_frame->linesize[0]; ++index) {
++                                    uint8_t value = tmp_frame->data[0][index];
++                                    tmp_frame->data[0][index] = (uint8_t)clamp(tmp_frame->data[0][index], min_x, max_x);
++                                }
++                            }
++                            output.data +=
++                                output.height * output.width *
++                                output.channels * get_datatype_size(output.dt);
++                        }
++                        offset++;
++                    } while (offset != ivsr_model->nif);
++                } else {
++                    if (output.channels != 1 && output.layout == DL_NONE) {
++                        //convert buffer from NCHW to NHWC
++                        convert_nchw_to_nhwc(output.data, 1, output.channels, output.height, output.width, output.dt);
++                    }
++
++                    // For the outputs do not need normalization, normalization factor should be divided back. e.g. EDSR
++                    if (normalize_factor != 1 && output.dt == DNN_FLOAT &&
++                        (fabsf(output.scale - 1.0f) > 1e-6f || fabsf(output.scale) < 1e-6f)) {
++                        #pragma omp parallel for
++                        // only need to devide by normalize_factor for channels = 1.
++                        for (int pos = 0; pos < output.height * output.width * output.channels; pos++) {
++                            ((float*)output.data)[pos] = ((float*)output.data)[pos] / normalize_factor;
++                        }
++                    }
++
++                    ff_proc_from_dnn_to_frame(task->out_frame, &output,
++                                              &ivsr_model->model.filter_ctx);
++                    // clamp output to [16, 235] range for Y plane when color range of output is TV range,
++                    // assume model only process Y plane when output.channels = 1. AVCOL_RANGE_MPEG is mean tv range.
++                    if (task->out_frame->color_range == AVCOL_RANGE_MPEG && output.channels == 1) {
++                        if (bits == 8) {
++                            uint8_t min_x = 16, max_x = 235;
++                            for (int index = 0; index < task->out_frame->height * task->out_frame->linesize[0];
++                                 ++index) {
++                                uint8_t value = task->out_frame->data[0][index];
++                                task->out_frame->data[0][index] = (uint8_t)clamp(task->out_frame->data[0][index],
++                                                                                 min_x, max_x);
++                            }
++                        } else if (bits == 10) {
++                            uint16_t min_x = 64, max_x = 940;
++                            uint16_t* dstPtr = (uint16_t*)task->out_frame->data[0];
++                            ptrdiff_t dstStrideUint16 = task->out_frame->linesize[0] >> 1;
++                            for (int y = 0; y < task->out_frame->height; ++y) {
++                                for (int x = 0; x < task->out_frame->width; ++x) {
++                                    dstPtr[x] = (uint16_t)clamp(dstPtr[x], min_x, max_x);
++                                }
++                                dstPtr += dstStrideUint16;
++                            }
++                        }
++                    }
++                }
++            }
++        } else {
++            task->out_frame->width = output.width;
++            task->out_frame->height = output.height;
++        }
++
++        task->inference_done++;
++        av_freep(&request->lltasks[i]);
++        output.data =
++            (uint8_t *) output.data +
++            output.width * output.height * output.channels *
++            get_datatype_size(output.dt);
++    }
++
++    request->lltask_count = 0;
++    if (ff_safe_queue_push_back(requestq, request) < 0) {
++        av_freep(&request->in_frames);
++        av_freep(&request->out_frames);
++        av_freep(&request);
++        av_log(ctx, AV_LOG_ERROR, "Failed to push back request_queue.\n");
++        return;
++    }
++}
++
++static int get_input_ivsr(void *model, DNNData * input,
++                          const char *input_name)
++{
++    IVSRModel *ivsr_model = model;
++    DnnContext *ctx = ivsr_model->ctx;
++    IVSRStatus status;
++    tensor_desc_t input_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++
++    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
++        return DNN_GENERIC_ERROR;
++    }
++
++    set_dnndata_info(input, &input_tensor_desc_get);
++    if (ivsr_model->model_type == TSENET) {
++        input->dims[dnn_get_channel_idx_by_layout(input->layout)] /= 3;
++        input->channels /= 3;
++    }
++
++    // hard code to pass check_modelinput_inlink() that requires DNN_FLOAT of model_input->dt
++    input->dt = DNN_FLOAT;
++
++    return 0;
++}
++
++static int extract_lltask_from_task(TaskItem * task, Queue * lltask_queue)
++{
++
++    LastLevelTaskItem *lltask = av_malloc(sizeof(*lltask));
++    if (!lltask) {
++        return AVERROR(ENOMEM);
++    }
++    task->inference_todo = 1;
++    task->inference_done = 0;
++    lltask->task = task;
++    if (ff_queue_push_back(lltask_queue, lltask) < 0) {
++        av_freep(&lltask);
++        return AVERROR(ENOMEM);
++    }
++    return 0;
++}
++
++static int execute_model_ivsr(IVSRRequestItem * request,
++                              Queue * inferenceq)
++{
++    IVSRStatus status;
++    LastLevelTaskItem *lltask = NULL;
++    int ret = 0;
++    TaskItem *task = NULL;
++    DnnContext *ctx = NULL;
++    IVSRModel *ivsr_model = NULL;
++
++    if (ff_queue_size(inferenceq) == 0) {
++        av_freep(&request->in_frames);
++        av_freep(&request->out_frames);
++        av_freep(&request);
++        return 0;
++    }
++
++    lltask = ff_queue_peek_front(inferenceq);
++    task = lltask->task;
++    ivsr_model = task->model;
++    ctx = ivsr_model->ctx;
++
++    if (task->async) {
++        ret = fill_model_input_ivsr(ivsr_model, request);
++        //TSENet - according to return value, return or continue
++        if (ret == DNN_MORE_FRAMES) {
++            return ret;
++        } else if (ret != 0) {
++            goto err;
++        }
++        status =
++            ivsr_process_async(ivsr_model->handle, request->in_frames,
++                               request->out_frames, &request->cb);
++        if (status != OK) {
++            av_log(ctx, AV_LOG_ERROR,
++                   "Failed to process the inference on input data seq\n");
++            ret = DNN_GENERIC_ERROR;
++            goto err;
++        }
++        return 0;
++    } else {
++        av_log(ctx, AV_LOG_WARNING, "Not supported sync mode.\n");
++    }
++
++  err:
++    if (ff_safe_queue_push_back(ivsr_model->request_queue, request) < 0) {
++        av_freep(&request->in_frames);
++        av_freep(&request->out_frames);
++        av_freep(&request);
++    }
++    return ret;
++}
++
++static int get_output_ivsr(void *model, const char *input_name,
++                           int input_width, int input_height,
++                           const char *output_name, int *output_width,
++                           int *output_height)
++{
++    int ret = 0;
++    IVSRModel *ivsr_model = model;
++    DnnContext *ctx = ivsr_model->ctx;
++    IVSRStatus status;
++    DNNData output;
++    tensor_desc_t output_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++
++    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
++        return DNN_GENERIC_ERROR;
++    }
++
++    set_dnndata_info(&output, &output_tensor_desc_get);
++    *output_height = output.height;
++    *output_width  = output.width;
++
++    if (ivsr_model->model_type == VIDEOPROC) {
++        *output_height = input_height;
++        *output_width  = input_width;
++    }
++
++    return ret;
++}
++
++// Utility function to create and link config
++static ivsr_config_t* create_and_link_config(ivsr_config_t *previous,
++                                             int key, void *value, void *ctx) {
++    ivsr_config_t *config = av_mallocz(sizeof(ivsr_config_t));
++    if (config == NULL) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to malloc config\n");
++        return NULL;
++    }
++    config->key = key;
++    if (config->key == INPUT_TENSOR_DESC_SETTING
++        || config->key == OUTPUT_TENSOR_DESC_SETTING) {
++        config->value = (tensor_desc_t *)value;
++    } else {
++        config->value = (char *)value;
++    }
++
++    if (previous != NULL) {
++        previous->next = config;
++    }
++    return config;
++}
++
++DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
++                                 DNNFunctionType func_type,
++                                 AVFilterContext * filter_ctx)
++{
++    DNNModel *model = NULL;
++    IVSRModel *ivsr_model = NULL;
++    IVSRStatus status;
++    ivsr_config_t *config_device = NULL;
++    ivsr_config_t *config_customlib = NULL;
++    ivsr_config_t *config_cldnn = NULL;
++    ivsr_config_t *config_reshape = NULL;
++    ivsr_config_t *config_input_res = NULL;
++    ivsr_config_t *config_nireq = NULL;
++    ivsr_config_t *config_nstreams = NULL;
++    int nif = 0;
++    ivsr_config_t *config_input_tensor = NULL;
++    ivsr_config_t *config_output_tensor = NULL;
++    tensor_desc_t input_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++    tensor_desc_t output_tensor_desc_get = {
++        .precision = {0},
++        .layout = {0},
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 0,
++        .shape = {0}};
++
++    ivsr_model = av_mallocz(sizeof(IVSRModel));
++    if (!ivsr_model) {
++        av_freep(&model);
++        return NULL;
++    }
++    ivsr_model->ctx = ctx;
++    model = &ivsr_model->model;
++
++    ivsr_model->frame_queue = av_fifo_alloc2(4/*queue size*/, sizeof(AVFrame*), AV_FIFO_FLAG_AUTO_GROW);
++    if (!ivsr_model->frame_queue)
++        goto err;
++
++    if (ctx->ivsr_option.batch_size <= 0 || ctx->ivsr_option.batch_size > 1) {
++        av_log(ctx, AV_LOG_WARNING, "Set batch size to 1.\n");
++        ctx->ivsr_option.batch_size = 1;
++    }
++    // create infer_requests for async execution
++    if (ctx->nireq <= 0) {
++        // the default value is a rough estimation
++        ctx->nireq = av_cpu_count() / 2 + 1;
++    }
++
++    ivsr_model->model_type = ctx->ivsr_option.model_type;
++
++    // set ivsr config
++    // input model
++    ivsr_model->config = create_and_link_config(NULL, INPUT_MODEL, ctx->model_filename, ctx);
++    if (ivsr_model->config == NULL)
++        goto err;
++
++    config_device = create_and_link_config(ivsr_model->config, TARGET_DEVICE,
++                                           ctx->device ? ctx->device : "CPU", ctx);
++    if (config_device == NULL)
++        goto err;
++
++    AVFilterLink *inlink = filter_ctx->inputs[0];
++    int frame_h = inlink->h;
++    int frame_w = inlink->w;
++    ctx->ivsr_option.frame_input_height = inlink->h;
++    ctx->ivsr_option.frame_input_width  = inlink->w;
++
++    // input_res setting
++    char input_res_string[40] = {0};
++    sprintf(input_res_string, "%d,%d", frame_w, frame_h);
++    config_input_res = create_and_link_config(config_device, INPUT_RES, input_res_string, ctx);
++    if (config_input_res == NULL)
++         goto err;
++
++    tensor_desc_t input_tensor_desc_set = {
++        .precision = "u8",
++        .layout = "NHWC",
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 4,
++        .shape = {0, 0, 0, 0}};
++    tensor_desc_t output_tensor_desc_set = {
++        .precision = "fp32",
++        .layout = "NHWC",
++        .tensor_color_format = {0},
++        .model_color_format = {0},
++        .scale = 0.0,
++        .dimension = 4,
++        .shape = {0, 0, 0, 0}};
++
++    // Through the setting of input/output_tensor_desc_set, we can config where
++    // to do the pre-processing, in plugin or in SDK(openvino).
++    // set element type according to bit depth of frame
++    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(inlink->format);
++    switch (desc->comp[0].depth)
++    {
++    case 8:
++        strcpy(input_tensor_desc_set.precision, "u8");
++        break;
++    case 10:
++    case 16:
++        strcpy(input_tensor_desc_set.precision, "u16");
++        break;
++    default:
++        break;
++    }
++    // set element type of output for EDSR
++    if (ivsr_model->model_type == EDSR) {
++        if (desc->comp[0].depth == 8) {
++            strcpy(output_tensor_desc_set.precision, "u8");
++        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++            strcpy(output_tensor_desc_set.precision, "u16");
++        }
++    }
++    // customize layout for Basic_VSR and TSENet
++    if (ivsr_model->model_type == BASICVSR) {
++        strcpy(input_tensor_desc_set.layout, "NFHWC");
++        strcpy(output_tensor_desc_set.layout, "NFHWC");
++    } else if (ivsr_model->model_type == TSENET) {
++        //For TSENet, it's not typical N'C'HW, so do the NHWC->NCHW transion in plugin
++        strcpy(input_tensor_desc_set.layout, "NCHW");
++        if (desc->comp[0].depth == 8) {
++            strcpy(input_tensor_desc_set.precision, "u8");
++        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++            strcpy(input_tensor_desc_set.precision, "u16");
++        }
++    }
++    // set scale for non-float type of input
++    if (fabsf(ctx->ivsr_option.normalize_factor - 1) < 1e-6f &&
++        (strcmp(input_tensor_desc_set.precision, "u8")  == 0 ||
++         strcmp(input_tensor_desc_set.precision, "u16") == 0)) {
++        switch (desc->comp[0].depth)
++        {
++        case 8:
++            input_tensor_desc_set.scale = 255.0;
++            break;
++        case 10:
++            input_tensor_desc_set.scale = 1023.0;
++            break;
++        case 16:
++            input_tensor_desc_set.scale = 65535.0;
++            break;
++        default:
++            break;
++        }
++    }
++
++    // set color format of input tensor
++    switch (inlink->format)
++    {
++    case AV_PIX_FMT_RGB24:
++    case AV_PIX_FMT_RGB48:
++        strcpy(input_tensor_desc_set.tensor_color_format, "RGB");
++        break;
++    case AV_PIX_FMT_BGR24:
++    case AV_PIX_FMT_BGR48:
++        strcpy(input_tensor_desc_set.tensor_color_format, "BGR");
++        break;
++    case AV_PIX_FMT_YUV420P:
++    case AV_PIX_FMT_YUV420P10LE:
++        strcpy(input_tensor_desc_set.tensor_color_format, "I420_Three_Planes");
++        break;
++    default:
++        break;
++    }
++    // set color format of model required
++    switch (ivsr_model->model_type)
++    {
++    case BASICVSR:
++    case EDSR:
++    case TSENET:
++        strcpy(input_tensor_desc_set.model_color_format, "RGB");
++        break;
++    case VIDEOPROC:
++        if (desc->flags & AV_PIX_FMT_FLAG_RGB)
++            strcpy(input_tensor_desc_set.model_color_format, "RGB");
++        else
++            strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
++        break;
++    case CUSTVSR:
++        strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
++        break;
++    default:
++        break;
++    }
++    config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
++    config_output_tensor = create_and_link_config(config_input_tensor, OUTPUT_TENSOR_DESC_SETTING, &output_tensor_desc_set, ctx);
++
++    char nireq_string[40] = {0};
++    sprintf(nireq_string, "%d", ctx->nireq);
++    config_nireq = create_and_link_config(config_output_tensor, INFER_REQ_NUMBER, nireq_string, ctx);
++    if (config_nireq == NULL)
++        goto err;
++
++    //TODO: reshape setting follows NHW layout. Hardcode the batch_size as 1.
++    char shape_string[40] = {0};
++    switch (ivsr_model->model_type) {
++    case BASICVSR:
++        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
++        break;
++    case VIDEOPROC:
++        // the input resoultion required 8-aligned
++        frame_h = (frame_h + ALIGNED_SIZE - 1) / ALIGNED_SIZE * ALIGNED_SIZE;
++        frame_w = (frame_w + ALIGNED_SIZE - 1) / ALIGNED_SIZE * ALIGNED_SIZE;
++        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
++        break;
++    case EDSR:
++        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
++        break;
++    case CUSTVSR:
++        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
++        break;
++    case TSENET:
++        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
++        break;
++    default:
++        av_log(ctx, AV_LOG_ERROR, "Not supported model type\n");
++        return DNN_GENERIC_ERROR;
++    }
++    config_reshape = create_and_link_config(config_nireq, RESHAPE_SETTINGS, shape_string, ctx);
++    if (config_reshape == NULL)
++        goto err;
++
++    char nstreams_string[40] = {0};
++    sprintf(nstreams_string, "%d", ctx->ivsr_option.num_streams);
++    config_nstreams = create_and_link_config(config_reshape, NUM_STREAMS, nstreams_string, ctx);
++    if (config_nstreams == NULL)
++        goto err;
++
++    if (ctx->ivsr_option.extension != NULL) {
++        config_customlib = create_and_link_config(config_nstreams, CUSTOM_LIB, ctx->ivsr_option.extension, ctx);
++        if (config_customlib == NULL)
++            goto err;
++    }
++
++    if (ctx->ivsr_option.op_xml != NULL) {
++        config_cldnn = create_and_link_config(ctx->ivsr_option.extension != NULL ?
++                                              config_customlib : config_nstreams,
++                                              CLDNN_CONFIG, ctx->ivsr_option.op_xml, ctx);
++        if (config_cldnn == NULL)
++            goto err;
++    }
++
++    // initialize ivsr
++    status = ivsr_init(ivsr_model->config, &ivsr_model->handle);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to initialize ivsr engine\n");
++        goto err;
++    }
++
++    status = ivsr_get_attr(ivsr_model->handle, NUM_INPUT_FRAMES, &nif);
++    if (status != OK) {
++	        av_log(ctx, AV_LOG_ERROR, "Failed to get nif\n");
++	        goto err;
++	    }
++    ivsr_model->nif = nif;
++    //TODO: hard code nif for TSENET
++    if(ivsr_model->model_type == TSENET) ivsr_model->nif = 3;
++
++    status =
++        ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get input tensor description\n");
++        goto err;
++    }
++
++    status =
++        ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to get output description\n");
++        goto err;
++    }
++
++    ivsr_model->request_queue = ff_safe_queue_create();
++    if (!ivsr_model->request_queue) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to create request queue\n");
++        goto err;
++    }
++
++    for (int i = 0; i < ctx->nireq; i++) {
++        IVSRRequestItem *item = av_mallocz(sizeof(*item));
++        if (!item) {
++            av_log(ctx, AV_LOG_ERROR,
++                   "Failed to malloc IVSR request item\n");
++            goto err;
++        }
++
++        item->in_frames = av_malloc(get_tensor_size(&input_tensor_desc_get));
++        if (!item->in_frames) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to malloc in frames\n");
++            goto err;
++        }
++        memset(item->in_frames, 0,  get_tensor_size(&input_tensor_desc_get));
++
++        item->out_frames = av_malloc(get_tensor_size(&output_tensor_desc_get));
++        if (!item->out_frames) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to malloc out frames\n");
++            goto err;
++        }
++        memset(item->out_frames, 0 , get_tensor_size(&output_tensor_desc_get));
++
++        item->cb.ivsr_cb = infer_completion_callback;
++        item->cb.args = item;
++        if (ff_safe_queue_push_back(ivsr_model->request_queue, item) < 0) {
++            av_freep(&item->in_frames);
++            av_freep(&item->out_frames);
++            av_freep(&item);
++            goto err;
++        }
++
++        //TODO batch_size * nif?
++        item->lltasks =
++            av_malloc_array(ctx->ivsr_option.batch_size,
++                            sizeof(*item->lltasks));
++        if (!item->lltasks) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to malloc lltasks\n");
++            goto err;
++        }
++        item->lltask_count = 0;
++    }
++
++    ivsr_model->task_queue = ff_queue_create();
++    if (!ivsr_model->task_queue) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to malloc lltasks\n");
++        goto err;
++    }
++
++    ivsr_model->lltask_queue = ff_queue_create();
++    if (!ivsr_model->lltask_queue) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to malloc lltask queue\n");
++        goto err;
++    }
++
++    model->get_input = &get_input_ivsr;
++    model->get_output = &get_output_ivsr;
++    model->filter_ctx = filter_ctx;
++    model->func_type = func_type;
++
++    return model;
++  err:
++    ff_dnn_free_model_ivsr(&model);
++    return NULL;
++}
++
++int ff_dnn_execute_model_ivsr(const DNNModel * model,
++                              DNNExecBaseParams * exec_params)
++{
++    IVSRModel *ivsr_model = (IVSRModel *)model;
++    DnnContext *ctx = ivsr_model->ctx;
++    IVSRRequestItem *request;
++    TaskItem *task;
++    int ret = 0;
++
++    ret =
++        ff_check_exec_params(ctx, DNN_IVSR, model->func_type, exec_params);
++    if (ret != 0) {
++        return ret;
++    }
++
++    task = av_malloc(sizeof(*task));
++    if (!task) {
++        av_log(ctx, AV_LOG_ERROR,
++               "unable to alloc memory for task item.\n");
++        return AVERROR(ENOMEM);
++    }
++
++    ret = ff_dnn_fill_task(task, exec_params, ivsr_model, ctx->async, 1);
++    if (ret != 0) {
++        av_freep(&task);
++        return ret;
++    }
++
++    if (ff_queue_push_back(ivsr_model->task_queue, task) < 0) {
++        av_freep(&task);
++        av_log(ctx, AV_LOG_ERROR, "unable to push back task_queue.\n");
++        return AVERROR(ENOMEM);
++    }
++
++    //TODO: for BasicVSR, queue nif task objects to lltask_queue?
++    ret = extract_lltask_from_task(task, ivsr_model->lltask_queue);
++    if (ret != 0) {
++        av_log(ctx, AV_LOG_ERROR,
++               "unable to extract inference from task.\n");
++        return ret;
++    }
++
++    if (ctx->async) {
++        //TODO: batch mode support to be updated
++        //for TSENet, it will start inference for (N)th frame when (N+1)th frame arrives
++        //So lltask_queue may cache > batch_size frames
++        //while (ff_queue_size(ivsr_model->lltask_queue) >=
++        //       ctx->options.batch_size) {
++            request = ff_safe_queue_pop_front(ivsr_model->request_queue);
++            if (!request) {
++                av_log(ctx, AV_LOG_ERROR,
++                       "unable to get infer request.\n");
++                return AVERROR(EINVAL);
++            }
++
++            ret = execute_model_ivsr(request, ivsr_model->lltask_queue);
++            if (ret == DNN_MORE_FRAMES) {
++                // push_front the request item as it was not processed
++                ff_safe_queue_push_front(ivsr_model->request_queue, request);
++                return 0;
++            } else if (ret != 0) {
++                return ret;
++            }
++        //}
++
++        return 0;
++    }
++
++    av_log(ctx, AV_LOG_WARNING, "Not supported sync mode.\n");
++    return AVERROR(EINVAL);
++}
++
++DNNAsyncStatusType ff_dnn_get_result_ivsr(const DNNModel * model,
++                                          AVFrame ** in, AVFrame ** out)
++{
++    IVSRModel *ivsr_model = (IVSRModel *)model;
++    return ff_dnn_get_result_common(ivsr_model->task_queue, in, out);
++}
++
++int ff_dnn_flush_ivsr(const DNNModel * model)
++{
++    //TODO: update this API to handle EOS for BasicVSR
++    IVSRModel *ivsr_model = (IVSRModel *)model;
++    DnnContext *ctx = ivsr_model->ctx;
++    IVSRRequestItem *request;
++    IVSRStatus status;
++    int ret;
++
++    //TODO: ivsr_process is actually sync, so flush_frame() will do nothing
++    if (ff_queue_size(ivsr_model->lltask_queue) == 0) {
++        // no pending task need to flush
++        return 0;
++    }
++
++    request = ff_safe_queue_pop_front(ivsr_model->request_queue);
++    if (!request) {
++        av_log(ctx, AV_LOG_ERROR, "unable to get infer request.\n");
++        return AVERROR(EINVAL);
++    }
++
++    ret = fill_model_input_ivsr(ivsr_model, request);
++    if (ret == DNN_MORE_FRAMES) {
++        return ret;
++    } else if (ret != 0) {
++        av_log(ctx, AV_LOG_ERROR, "Failed to fill model input.\n");
++        return ret;
++    }
++
++    status =
++        ivsr_process_async(ivsr_model->handle, request->in_frames,
++                           request->out_frames, &request->cb);
++    if (status != OK) {
++        av_log(ctx, AV_LOG_ERROR,
++               "Failed to process the inference on input data seq\n");
++        ret = DNN_GENERIC_ERROR;
++    }
++
++    return 0;
++}
++
++void ff_dnn_free_model_ivsr(DNNModel ** model)
++{
++    if (*model) {
++        IVSRModel *ivsr_model = (IVSRModel *)(*model);
++        ivsr_handle handle = ivsr_model->handle;
++        ivsr_config_t *config = ivsr_model->config;
++        DnnContext *ctx = ivsr_model->ctx;
++        IVSRStatus status;
++
++        while (ff_safe_queue_size(ivsr_model->request_queue) != 0) {
++            IVSRRequestItem *item =
++                ff_safe_queue_pop_front(ivsr_model->request_queue);
++            av_freep(&item->in_frames);
++            av_freep(&item->out_frames);
++            av_freep(&item->lltasks);
++            av_freep(&item);
++        }
++        ff_safe_queue_destroy(ivsr_model->request_queue);
++
++        while (ff_queue_size(ivsr_model->lltask_queue) != 0) {
++            LastLevelTaskItem *item =
++                ff_queue_pop_front(ivsr_model->lltask_queue);
++            av_freep(&item);
++        }
++        ff_queue_destroy(ivsr_model->lltask_queue);
++
++        while (ff_queue_size(ivsr_model->task_queue) != 0) {
++            TaskItem *item = ff_queue_pop_front(ivsr_model->task_queue);
++            av_frame_free(&item->in_frame);
++            av_frame_free(&item->out_frame);
++            av_freep(&item);
++        }
++        ff_queue_destroy(ivsr_model->task_queue);
++
++        status = ivsr_deinit(handle);
++        if (status != OK) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to release ivsr engine\n");
++        }
++        while (config != NULL) {
++            ivsr_config_t *next = config->next;
++            av_free(config);
++            config = next;
++        }
++        //av_freep(&handle);
++
++        //free the cached frame in the queue
++        while (av_fifo_can_read(ivsr_model->frame_queue) > 0) {
++            AVFrame *frame = NULL;
++            av_fifo_read(ivsr_model->frame_queue, &frame, 1);
++            av_frame_unref(frame);
++            av_frame_free(&frame);
++        }
++        av_fifo_freep2(&ivsr_model->frame_queue);
++
++        av_freep(&ivsr_model);
++        *model = NULL;
++    }
++    return;
++}
++
++const DNNModule ff_dnn_backend_ivsr = {
++    .clazz          = DNN_DEFINE_CLASS(dnn_ivsr),
++    .type           = DNN_IVSR,
++    .load_model     = ff_dnn_load_model_ivsr,
++    .execute_model  = ff_dnn_execute_model_ivsr,
++    .get_result     = ff_dnn_get_result_ivsr,
++    .flush          = ff_dnn_flush_ivsr,
++    .free_model     = ff_dnn_free_model_ivsr,
++};
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.h b/libavfilter/dnn/dnn_backend_ivsr.h
+new file mode 100644
+index 0000000000..3abb63230e
+--- /dev/null
++++ b/libavfilter/dnn/dnn_backend_ivsr.h
+@@ -0,0 +1,40 @@
++/*
++ * Copyright (c) 2020
++ *
++ * This file is part of FFmpeg.
++ *
++ * FFmpeg is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU Lesser General Public
++ * License as published by the Free Software Foundation; either
++ * version 2.1 of the License, or (at your option) any later version.
++ *
++ * FFmpeg is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++ * Lesser General Public License for more details.
++ *
++ * You should have received a copy of the GNU Lesser General Public
++ * License along with FFmpeg; if not, write to the Free Software
++ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
++ */
++
++/**
++ * @file
++ * DNN inference functions interface for iVSR SDK backend.
++ */
++
++
++#ifndef AVFILTER_DNN_DNN_BACKEND_IVSR_H
++#define AVFILTER_DNN_DNN_BACKEND_IVSR_H
++
++#include "../dnn_interface.h"
++
++DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx, DNNFunctionType func_type, AVFilterContext *filter_ctx);
++
++int ff_dnn_execute_model_ivsr(const DNNModel *model, DNNExecBaseParams *exec_params);
++DNNAsyncStatusType ff_dnn_get_result_ivsr(const DNNModel *model, AVFrame **in, AVFrame **out);
++int ff_dnn_flush_ivsr(const DNNModel *model);
++
++void ff_dnn_free_model_ivsr(DNNModel **model);
++
++#endif
+diff --git a/libavfilter/dnn/dnn_interface.c b/libavfilter/dnn/dnn_interface.c
+index bb477348dc..2e955fc5da 100644
+--- a/libavfilter/dnn/dnn_interface.c
++++ b/libavfilter/dnn/dnn_interface.c
+@@ -33,6 +33,7 @@
+ extern const DNNModule ff_dnn_backend_openvino;
+ extern const DNNModule ff_dnn_backend_tf;
+ extern const DNNModule ff_dnn_backend_torch;
++extern const DNNModule ff_dnn_backend_ivsr;
+
+ #define OFFSET(x) offsetof(DnnContext, x)
+ #define FLAGS AV_OPT_FLAG_FILTERING_PARAM
+@@ -78,6 +79,9 @@ static const DnnBackendInfo dnn_backend_info_list[] = {
+ #if CONFIG_LIBTORCH
+         {offsetof(DnnContext, torch_option), .module = &ff_dnn_backend_torch},
+ #endif
++#if CONFIG_LIBIVSR
++        {offsetof(DnnContext, ivsr_option), .module = &ff_dnn_backend_ivsr},
++#endif
+ };
+
+ const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
+@@ -98,6 +102,15 @@ void ff_dnn_init_child_class(DnnContext *ctx)
+     for (int i = 0; i < FF_ARRAY_ELEMS(dnn_backend_info_list); i++) {
+         const AVClass **ptr = (const AVClass **) ((char *) ctx + dnn_backend_info_list[i].offset);
+         *ptr = dnn_backend_info_list[i].class;
++        av_opt_set_defaults(ptr);
++    }
++}
++
++void ff_dnn_uninit_child_class(DnnContext *ctx)
++{
++    for (int i = 0; i < FF_ARRAY_ELEMS(dnn_backend_info_list); i++) {
++        const AVClass **ptr = (const AVClass **) ((char *) ctx + dnn_backend_info_list[i].offset);
++        av_opt_free(ptr);
+     }
+ }
+
+diff --git a/libavfilter/dnn/dnn_io_proc.c b/libavfilter/dnn/dnn_io_proc.c
+index 826110dab0..c4b2af5006 100644
+--- a/libavfilter/dnn/dnn_io_proc.c
++++ b/libavfilter/dnn/dnn_io_proc.c
+@@ -33,12 +33,72 @@ static int get_datatype_size(DNNDataType dt)
+         return sizeof(float);
+     case DNN_UINT8:
+         return sizeof(uint8_t);
++    case DNN_UINT16:
++        return sizeof(uint16_t);
+     default:
+         av_assert0(!"not supported yet.");
+         return 1;
+     }
+ }
+
++static DNNColorOrder map_dnn_color_order(int format) {
++    switch (format)
++    {
++    case AV_PIX_FMT_RGB24:
++    case AV_PIX_FMT_RGB48:
++        return DCO_RGB;
++    case AV_PIX_FMT_BGR24:
++    case AV_PIX_FMT_BGR48:
++        return DCO_BGR;
++    default:
++        return DCO_NONE;
++    }
++}
++
++// bgr<->rgb
++static void transpose(DNNData *input, DNNColorOrder dst_order) {
++    if (input->order == DCO_NONE || input->layout == DL_NONE
++            || dst_order == DCO_NONE || input->order == dst_order)
++        return;
++
++    int width_idx = 0, height_idx = 0, channel_idx = 0;
++    width_idx = dnn_get_width_idx_by_layout(input->layout);
++    height_idx = dnn_get_height_idx_by_layout(input->layout);
++    channel_idx = dnn_get_channel_idx_by_layout(input->layout);
++
++    int H = input->dims[height_idx];
++    int W = input->dims[width_idx];
++    int C = input->dims[channel_idx];
++    void *data = input->data;
++    int a_index = 0, b_index = 0;
++    int type_size = get_datatype_size(input->dt);
++    //transpose bgr<->rgb for NHWC layout
++    if (input->layout == DL_NHWC) {
++        for (int h = 0; h < H; ++h) {
++            for (int w = 0; w < W; ++w) {
++                a_index = h * W * C + w * C;
++                b_index = a_index + (C - 1);
++                for (int byte = 0; byte < type_size; ++byte) {
++                    uint8_t tmp = ((uint8_t*)data)[a_index * type_size + byte];
++                    ((uint8_t*)data)[a_index * type_size + byte] = ((uint8_t*)data)[b_index * type_size + byte];
++                    ((uint8_t*)data)[b_index * type_size + byte] = tmp;
++                }
++            }
++        }
++    // transpose bgr<->rgb for NCHW layout
++    } else if (input->layout == DL_NCHW) {
++        int plane_size = H * W * type_size;
++        void *tmp = av_malloc(plane_size);
++        memcpy(tmp, data, plane_size);
++        memcpy(data, data + (C - 1) * plane_size, plane_size);
++        memcpy(data + (C - 1) * plane_size, tmp, plane_size);
++        av_free(tmp);
++    }
++
++    // re-set order
++    input->order = dst_order;
++}
++
+ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+ {
+     struct SwsContext *sws_ctx;
+@@ -47,10 +107,16 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+     void **dst_data = NULL;
+     void *middle_data = NULL;
+     uint8_t *planar_data[4] = { 0 };
+-    int plane_size = frame->width * frame->height * sizeof(uint8_t);
++    int plane_size = 0;
+     enum AVPixelFormat src_fmt = AV_PIX_FMT_NONE;
++    enum AVPixelFormat dst_fmt = AV_PIX_FMT_NONE;
++    enum AVPixelFormat mdl_fmt = AV_PIX_FMT_NONE;
+     int src_datatype_size = get_datatype_size(output->dt);
+-
++    const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(frame->format);
++    const AVComponentDescriptor *comp_desc = &pix_desc->comp[0];
++    int bits = comp_desc->depth;
++    const char *pix_fmt_name = av_get_pix_fmt_name(frame->format);
++    int width_idx = dnn_get_width_idx_by_layout(output->layout);
+     int bytewidth = av_image_get_linesize(frame->format, frame->width, 0);
+     if (bytewidth < 0) {
+         return AVERROR(EINVAL);
+@@ -58,6 +124,9 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+     /* scale == 1 and mean == 0 and dt == UINT8: passthrough */
+     if (fabsf(output->scale - 1) < 1e-6f && fabsf(output->mean) < 1e-6 && output->dt == DNN_UINT8)
+         src_fmt = AV_PIX_FMT_GRAY8;
++    /* scale == 1 and mean == 0 and dt == UINT16: passthrough */
++    else if (fabsf(output->scale - 1) < 1e-6f && fabsf(output->mean) < 1e-6 && output->dt == DNN_UINT16)
++        src_fmt = AV_PIX_FMT_GRAY16;
+     /* (scale == 255 or scale == 0) and mean == 0 and dt == FLOAT: normalization */
+     else if ((fabsf(output->scale - 255) < 1e-6f || fabsf(output->scale) < 1e-6f) &&
+              fabsf(output->mean) < 1e-6 && output->dt == DNN_FLOAT)
+@@ -68,8 +137,14 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+         return AVERROR(ENOSYS);
+     }
+
++    DNNColorOrder dst_color_order = map_dnn_color_order(frame->format);
++    if (dst_color_order != output->order) {
++        transpose(output, dst_color_order);
++    }
++
+     dst_data = (void **)frame->data;
+     linesize[0] = frame->linesize[0];
++    plane_size = linesize[0] * frame->height;
+     if (output->layout == DL_NCHW) {
+         middle_data = av_malloc(plane_size * output->dims[1]);
+         if (!middle_data) {
+@@ -81,32 +156,37 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+     }
+
+     switch (frame->format) {
++    case AV_PIX_FMT_RGB48LE:
++    case AV_PIX_FMT_BGR48LE:
+     case AV_PIX_FMT_RGB24:
+     case AV_PIX_FMT_BGR24:
++        dst_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GRAY8 : AV_PIX_FMT_GRAY16;
+         sws_ctx = sws_getContext(frame->width * 3,
+                                  frame->height,
+                                  src_fmt,
+                                  frame->width * 3,
+                                  frame->height,
+-                                 AV_PIX_FMT_GRAY8,
++                                 dst_fmt,
+                                  0, NULL, NULL, NULL);
+         if (!sws_ctx) {
+             av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                 "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+                 av_get_pix_fmt_name(src_fmt), frame->width * 3, frame->height,
+-                av_get_pix_fmt_name(AV_PIX_FMT_GRAY8),   frame->width * 3, frame->height);
++                av_get_pix_fmt_name(dst_fmt), frame->width * 3, frame->height);
+             ret = AVERROR(EINVAL);
+             goto err;
+         }
++        // For the source data, using "output->width" to indicate the stride in case of padding
+         sws_scale(sws_ctx, (const uint8_t *[4]){(const uint8_t *)output->data, 0, 0, 0},
+-                           (const int[4]){frame->width * 3 * src_datatype_size, 0, 0, 0}, 0, frame->height,
++                           (const int[4]){output->dims[width_idx] * 3 * src_datatype_size, 0, 0, 0}, 0, frame->height,
+                            (uint8_t * const*)dst_data, linesize);
+         sws_freeContext(sws_ctx);
+         // convert data from planar to packed
+         if (output->layout == DL_NCHW) {
++            mdl_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GBRP : AV_PIX_FMT_GBRP16LE;
+             sws_ctx = sws_getContext(frame->width,
+                                      frame->height,
+-                                     AV_PIX_FMT_GBRP,
++                                     mdl_fmt,
+                                      frame->width,
+                                      frame->height,
+                                      frame->format,
+@@ -114,24 +194,27 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+             if (!sws_ctx) {
+                 av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                        "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+-                       av_get_pix_fmt_name(AV_PIX_FMT_GBRP), frame->width, frame->height,
+-                       av_get_pix_fmt_name(frame->format),frame->width, frame->height);
++                       av_get_pix_fmt_name(mdl_fmt), frame->width, frame->height,
++                       av_get_pix_fmt_name(frame->format), frame->width, frame->height);
+                 ret = AVERROR(EINVAL);
+                 goto err;
+             }
+-            if (frame->format == AV_PIX_FMT_RGB24) {
+-                planar_data[0] = (uint8_t *)middle_data + plane_size;
+-                planar_data[1] = (uint8_t *)middle_data + plane_size * 2;
+-                planar_data[2] = (uint8_t *)middle_data;
+-            } else if (frame->format == AV_PIX_FMT_BGR24) {
+-                planar_data[0] = (uint8_t *)middle_data + plane_size;
+-                planar_data[1] = (uint8_t *)middle_data;
+-                planar_data[2] = (uint8_t *)middle_data + plane_size * 2;
++            if (strstr(pix_fmt_name, "rgb") != NULL) {
++                planar_data[0] = (uint8_t*)middle_data + plane_size;
++                planar_data[1] = (uint8_t*)middle_data + plane_size * 2;
++                planar_data[2] = (uint8_t*)middle_data;
++            } else if (strstr(pix_fmt_name, "bgr") != NULL) {
++                planar_data[0] = (uint8_t*)middle_data + plane_size;
++                planar_data[1] = (uint8_t*)middle_data;
++                planar_data[2] = (uint8_t*)middle_data + plane_size * 2;
++            } else {
++                av_log(log_ctx, AV_LOG_ERROR, "dnn_process output data doesn't support this format: %s\n", pix_fmt_name);
++                return AVERROR(ENOSYS);
+             }
+-            sws_scale(sws_ctx, (const uint8_t * const *)planar_data,
+-                      (const int [4]){frame->width * sizeof(uint8_t),
+-                                      frame->width * sizeof(uint8_t),
+-                                      frame->width * sizeof(uint8_t), 0},
++
++            int middle_data_linesize[4] = {0};
++            ret = av_image_fill_linesizes(middle_data_linesize, mdl_fmt, frame->width);
++            sws_scale(sws_ctx, (const uint8_t * const *)planar_data, middle_data_linesize,
+                       0, frame->height, frame->data, frame->linesize);
+             sws_freeContext(sws_ctx);
+         }
+@@ -148,23 +231,27 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
+     case AV_PIX_FMT_YUV411P:
+     case AV_PIX_FMT_GRAY8:
+     case AV_PIX_FMT_NV12:
++    case AV_PIX_FMT_YUV420P10LE:
++        av_assert0(comp_desc->depth == 8 || comp_desc->depth == 10);
++        dst_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GRAY8 : AV_PIX_FMT_GRAY10;
+         sws_ctx = sws_getContext(frame->width,
+                                  frame->height,
+-                                 AV_PIX_FMT_GRAYF32,
++                                 src_fmt,
+                                  frame->width,
+                                  frame->height,
+-                                 AV_PIX_FMT_GRAY8,
++                                 dst_fmt,
+                                  0, NULL, NULL, NULL);
+         if (!sws_ctx) {
+             av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                 "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+                 av_get_pix_fmt_name(src_fmt), frame->width, frame->height,
+-                av_get_pix_fmt_name(AV_PIX_FMT_GRAY8),   frame->width, frame->height);
++                av_get_pix_fmt_name(dst_fmt), frame->width, frame->height);
+             ret = AVERROR(EINVAL);
+             goto err;
+         }
++        // For the source data, using "output->width" to indicate the stride in case of padding.
+         sws_scale(sws_ctx, (const uint8_t *[4]){(const uint8_t *)output->data, 0, 0, 0},
+-                           (const int[4]){frame->width * src_datatype_size, 0, 0, 0}, 0, frame->height,
++                           (const int[4]){output->dims[width_idx] * src_datatype_size, 0, 0, 0}, 0, frame->height,
+                            (uint8_t * const*)frame->data, frame->linesize);
+         sws_freeContext(sws_ctx);
+         break;
+@@ -187,9 +274,16 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+     void **src_data = NULL;
+     void *middle_data = NULL;
+     uint8_t *planar_data[4] = { 0 };
+-    int plane_size = frame->width * frame->height * sizeof(uint8_t);
++    int plane_size = 0;
+     enum AVPixelFormat dst_fmt = AV_PIX_FMT_NONE;
++    enum AVPixelFormat src_fmt = AV_PIX_FMT_NONE;
++    enum AVPixelFormat mdl_fmt = AV_PIX_FMT_NONE;
+     int dst_datatype_size = get_datatype_size(input->dt);
++    const AVPixFmtDescriptor* pix_desc = av_pix_fmt_desc_get(frame->format);
++    const AVComponentDescriptor* comp_desc = &pix_desc->comp[0];
++    int bits = comp_desc->depth;
++    const char *pix_fmt_name = av_get_pix_fmt_name(frame->format);
++    int width_idx = dnn_get_width_idx_by_layout(input->layout);
+     int bytewidth = av_image_get_linesize(frame->format, frame->width, 0);
+     if (bytewidth < 0) {
+         return AVERROR(EINVAL);
+@@ -197,10 +291,14 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+     /* scale == 1 and mean == 0 and dt == UINT8: passthrough */
+     if (fabsf(input->scale - 1) < 1e-6f && fabsf(input->mean) < 1e-6 && input->dt == DNN_UINT8)
+         dst_fmt = AV_PIX_FMT_GRAY8;
++    /* scale == 1 and mean == 0 and dt == UINT16: passthrough */
++    else if (fabsf(input->scale - 1) < 1e-6f && fabsf(input->mean) < 1e-6 && input->dt == DNN_UINT16)
++        dst_fmt = comp_desc->depth == 10 ? AV_PIX_FMT_GRAY10 : AV_PIX_FMT_GRAY16;
+     /* (scale == 255 or scale == 0) and mean == 0 and dt == FLOAT: normalization */
++    //TODO: compare with "255" doesn't cover 10-bit case
+     else if ((fabsf(input->scale - 255) < 1e-6f || fabsf(input->scale) < 1e-6f) &&
+              fabsf(input->mean) < 1e-6 && input->dt == DNN_FLOAT)
+-        dst_fmt = AV_PIX_FMT_GRAYF32;
++        dst_fmt = AV_PIX_FMT_GRAYF32; //float, 0.0f ~ 1.0f
+     else {
+         av_log(log_ctx, AV_LOG_ERROR, "dnn_process input data doesn't support type: UINT8 "
+                                       "scale: %f, mean: %f\n", input->scale, input->mean);
+@@ -209,55 +307,67 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+
+     src_data = (void **)frame->data;
+     linesize[0] = frame->linesize[0];
+-    if (input->layout == DL_NCHW) {
+-        middle_data = av_malloc(plane_size * input->dims[1]);
+-        if (!middle_data) {
+-            ret = AVERROR(ENOMEM);
+-            goto err;
+-        }
+-        src_data = &middle_data;
+-        linesize[0] = frame->width * 3;
+-    }
+
+     switch (frame->format) {
++    case AV_PIX_FMT_RGB48LE:
++    case AV_PIX_FMT_BGR48LE:
+     case AV_PIX_FMT_RGB24:
+     case AV_PIX_FMT_BGR24:
+         // convert data from planar to packed
+         if (input->layout == DL_NCHW) {
++            av_assert0(comp_desc->depth == 8 || comp_desc->depth == 16);
++            mdl_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GBRP : AV_PIX_FMT_GBRP16LE;
++            int middle_data_linesize[4] = {0};
++            ret = av_image_fill_linesizes(middle_data_linesize, mdl_fmt, frame->width);
++            plane_size = middle_data_linesize[0] * frame->height;
++
++            int channel_idx = dnn_get_channel_idx_by_layout(input->layout);
++            av_assert0(channel_idx == 1);
++            middle_data = av_malloc(plane_size * input->dims[channel_idx]);
++            if (!middle_data) {
++                ret = AVERROR(ENOMEM);
++                goto err;
++            }
++            src_data = &middle_data;
++            //"linesize[]" is used for middle_data as AV_PIX_FMT_GRAY* format
++            linesize[0] = middle_data_linesize[0] * 3;
++
+             sws_ctx = sws_getContext(frame->width,
+                                      frame->height,
+                                      frame->format,
+                                      frame->width,
+                                      frame->height,
+-                                     AV_PIX_FMT_GBRP,
++                                     mdl_fmt,
+                                      0, NULL, NULL, NULL);
+             if (!sws_ctx) {
+                 av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                        "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+                        av_get_pix_fmt_name(frame->format), frame->width, frame->height,
+-                       av_get_pix_fmt_name(AV_PIX_FMT_GBRP),frame->width, frame->height);
++                       av_get_pix_fmt_name(mdl_fmt),frame->width, frame->height);
+                 ret = AVERROR(EINVAL);
+                 goto err;
+             }
+-            if (frame->format == AV_PIX_FMT_RGB24) {
++            if (strstr(pix_fmt_name, "rgb") != NULL) {
+                 planar_data[0] = (uint8_t *)middle_data + plane_size;
+                 planar_data[1] = (uint8_t *)middle_data + plane_size * 2;
+                 planar_data[2] = (uint8_t *)middle_data;
+-            } else if (frame->format == AV_PIX_FMT_BGR24) {
++            } else if (strstr(pix_fmt_name, "bgr") != NULL) {
+                 planar_data[0] = (uint8_t *)middle_data + plane_size;
+                 planar_data[1] = (uint8_t *)middle_data;
+                 planar_data[2] = (uint8_t *)middle_data + plane_size * 2;
++            } else {
++                av_log(log_ctx, AV_LOG_ERROR, "dnn_process input data doesn't support this format: %s\n", pix_fmt_name);
++                return AVERROR(ENOSYS);
+             }
+             sws_scale(sws_ctx, (const uint8_t * const *)frame->data,
+                       frame->linesize, 0, frame->height, planar_data,
+-                      (const int [4]){frame->width * sizeof(uint8_t),
+-                                      frame->width * sizeof(uint8_t),
+-                                      frame->width * sizeof(uint8_t), 0});
++                      middle_data_linesize);
+             sws_freeContext(sws_ctx);
+         }
++        src_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GRAY8 : AV_PIX_FMT_GRAY16;
+         sws_ctx = sws_getContext(frame->width * 3,
+                                  frame->height,
+-                                 AV_PIX_FMT_GRAY8,
++                                 src_fmt,
+                                  frame->width * 3,
+                                  frame->height,
+                                  dst_fmt,
+@@ -265,15 +375,16 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+         if (!sws_ctx) {
+             av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                 "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+-                av_get_pix_fmt_name(AV_PIX_FMT_GRAY8),  frame->width * 3, frame->height,
+-                av_get_pix_fmt_name(dst_fmt),frame->width * 3, frame->height);
++                av_get_pix_fmt_name(src_fmt), frame->width * 3, frame->height,
++                av_get_pix_fmt_name(dst_fmt), frame->width * 3, frame->height);
+             ret = AVERROR(EINVAL);
+             goto err;
+         }
++        // For the dest data, using "input->width" to indicate the stride in case of padding
+         sws_scale(sws_ctx, (const uint8_t **)src_data,
+                            linesize, 0, frame->height,
+                            (uint8_t * const [4]){input->data, 0, 0, 0},
+-                           (const int [4]){frame->width * 3 * dst_datatype_size, 0, 0, 0});
++                           (const int [4]){input->dims[width_idx] * 3 * dst_datatype_size, 0, 0, 0});
+         sws_freeContext(sws_ctx);
+         break;
+     case AV_PIX_FMT_GRAYF32:
+@@ -288,9 +399,12 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+     case AV_PIX_FMT_YUV411P:
+     case AV_PIX_FMT_GRAY8:
+     case AV_PIX_FMT_NV12:
++    case AV_PIX_FMT_YUV420P10LE:
++        av_assert0(comp_desc->depth == 8 || comp_desc->depth == 10);
++        src_fmt = comp_desc->depth == 8 ? AV_PIX_FMT_GRAY8 : AV_PIX_FMT_GRAY10;
+         sws_ctx = sws_getContext(frame->width,
+                                  frame->height,
+-                                 AV_PIX_FMT_GRAY8,
++                                 src_fmt,
+                                  frame->width,
+                                  frame->height,
+                                  dst_fmt,
+@@ -298,15 +412,16 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+         if (!sws_ctx) {
+             av_log(log_ctx, AV_LOG_ERROR, "Impossible to create scale context for the conversion "
+                 "fmt:%s s:%dx%d -> fmt:%s s:%dx%d\n",
+-                av_get_pix_fmt_name(AV_PIX_FMT_GRAY8),  frame->width, frame->height,
+-                av_get_pix_fmt_name(dst_fmt),frame->width, frame->height);
++                av_get_pix_fmt_name(src_fmt), frame->width, frame->height,
++                av_get_pix_fmt_name(dst_fmt), frame->width, frame->height);
+             ret = AVERROR(EINVAL);
+             goto err;
+         }
++        // For the dest data, using "input->width" to indicate the stride in case of padding
+         sws_scale(sws_ctx, (const uint8_t **)frame->data,
+                            frame->linesize, 0, frame->height,
+                            (uint8_t * const [4]){input->data, 0, 0, 0},
+-                           (const int [4]){frame->width * dst_datatype_size, 0, 0, 0});
++                           (const int [4]){input->dims[width_idx] * dst_datatype_size, 0, 0, 0});
+         sws_freeContext(sws_ctx);
+         break;
+     default:
+@@ -314,6 +429,12 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
+         ret = AVERROR(ENOSYS);
+         goto err;
+     }
++    DNNColorOrder current_color_order = map_dnn_color_order(frame->format);
++    if (input->order != current_color_order) {
++        DNNColorOrder dst_color_order = input->order;
++        input->order = current_color_order;
++        transpose(input, dst_color_order);
++    }
+ err:
+     av_free(middle_data);
+     return ret;
+diff --git a/libavfilter/dnn_filter_common.c b/libavfilter/dnn_filter_common.c
+index 6b9c6f8d7f..1c21eed860 100644
+--- a/libavfilter/dnn_filter_common.c
++++ b/libavfilter/dnn_filter_common.c
+@@ -176,6 +176,8 @@ int ff_dnn_execute_model(DnnContext *ctx, AVFrame *in_frame, AVFrame *out_frame)
+         .nb_output      = ctx->nb_outputs,
+         .in_frame       = in_frame,
+         .out_frame      = out_frame,
++        .in_queue       = (AVFifo*)ctx->in_queue,
++        .out_queue       = (AVFifo*)ctx->out_queue,
+     };
+     return (ctx->dnn_module->execute_model)(ctx->model, &exec_params);
+ }
+@@ -210,10 +212,20 @@ void ff_dnn_uninit(DnnContext *ctx)
+     if (ctx->dnn_module) {
+         (ctx->dnn_module->free_model)(&ctx->model);
+     }
++
++    if (ctx->in_queue) {
++        av_fifo_freep2(&ctx->in_queue);
++    }
++
++    if (ctx->out_queue) {
++        av_fifo_freep2(&ctx->out_queue);
++    }
+     if (ctx->model_outputnames) {
+         for (int i = 0; i < ctx->nb_outputs; i++)
+             av_free(ctx->model_outputnames[i]);
+
+         av_freep(&ctx->model_outputnames);
+     }
++
++    ff_dnn_uninit_child_class(ctx);
+ }
+diff --git a/libavfilter/dnn_interface.h b/libavfilter/dnn_interface.h
+index 66086409be..0444526d17 100644
+--- a/libavfilter/dnn_interface.h
++++ b/libavfilter/dnn_interface.h
+@@ -28,6 +28,7 @@
+
+ #include <stdint.h>
+ #include "libavutil/frame.h"
++#include "libavutil/fifo.h"
+ #include "avfilter.h"
+
+ #define DNN_GENERIC_ERROR FFERRTAG('D','N','N','!')
+@@ -35,10 +36,11 @@
+ typedef enum {
+     DNN_TF = 1,
+     DNN_OV = 1 << 1,
+-    DNN_TH = 1 << 2
++    DNN_TH = 1 << 2,
++    DNN_IVSR = 1 << 3
+ } DNNBackendType;
+
+-typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
++typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4, DNN_UINT16 = 8} DNNDataType;
+
+ typedef enum {
+     DCO_NONE,
+@@ -68,6 +70,9 @@ typedef enum {
+
+ typedef struct DNNData{
+     void *data;
++    // TODO: Keep the 3 parameters for iVSR backend only.
++    int width, height, channels;
++    // TODO: it might not be good to have a "4"-dimensional array, its better to follow OV's ov_shape_t struct.
+     int dims[4];
+     // dt and order together decide the color format
+     DNNDataType dt;
+@@ -83,6 +88,8 @@ typedef struct DNNExecBaseParams {
+     uint32_t nb_output;
+     AVFrame *in_frame;
+     AVFrame *out_frame;
++    AVFifo *in_queue;
++    AVFifo *out_queue;
+ } DNNExecBaseParams;
+
+ typedef struct DNNExecClassificationParams {
+@@ -138,6 +145,23 @@ typedef struct THOptions {
+     int optimize;
+ } THOptions;
+
++typedef struct iVSROptions {
++    const AVClass *clazz;
++
++    int batch_size;
++    char *extension;
++    char *op_xml;
++    int model_type;
++    float normalize_factor;
++    char *reshape_values;
++    int num_streams;
++
++    uint32_t frame_input_height;
++    uint32_t frame_input_width;
++    uint32_t model_input_height;
++    uint32_t model_input_width;
++} iVSROptions;
++
+ typedef struct DNNModule DNNModule;
+
+ typedef struct DnnContext {
+@@ -156,6 +180,11 @@ typedef struct DnnContext {
+     uint32_t nb_outputs;
+     const DNNModule *dnn_module;
+
++    //TODO: the following 3 items are for BasicVSR only.
++    AVFifo *in_queue;
++    AVFifo *out_queue;
++    int nif;
++
+     int nireq;
+     char *device;
+
+@@ -169,6 +198,9 @@ typedef struct DnnContext {
+ #if CONFIG_LIBTORCH
+     THOptions torch_option;
+ #endif
++#if CONFIG_LIBIVSR
++    iVSROptions ivsr_option;
++#endif
+ } DnnContext;
+
+ // Stores pointers to functions for loading, executing, freeing DNN models for one of the backends.
+@@ -191,6 +223,7 @@ struct DNNModule {
+ const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx);
+
+ void ff_dnn_init_child_class(DnnContext *ctx);
++void ff_dnn_uninit_child_class(DnnContext *ctx);
+ void *ff_dnn_child_next(DnnContext *obj, void *prev);
+ const AVClass *ff_dnn_child_class_iterate_with_mask(void **iter, uint32_t backend_mask);
+
+diff --git a/libavfilter/vf_dnn_processing.c b/libavfilter/vf_dnn_processing.c
+index eb75f06f05..8e7f107e02 100644
+--- a/libavfilter/vf_dnn_processing.c
++++ b/libavfilter/vf_dnn_processing.c
+@@ -27,6 +27,7 @@
+ #include "libavutil/pixdesc.h"
+ #include "libavutil/avassert.h"
+ #include "libavutil/imgutils.h"
++#include "libavutil/fifo.h"
+ #include "filters.h"
+ #include "dnn_filter_common.h"
+ #include "video.h"
+@@ -51,26 +52,48 @@ static const AVOption dnn_processing_options[] = {
+     { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, .unit = "backend" },
+ #endif
+ #if (CONFIG_LIBTORCH == 1)
+-    { "torch",       "torch backend flag",         0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TH },    0, 0, FLAGS, "backend" },
++    { "torch",       "torch backend flag",         0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TH },    0, 0, FLAGS, .unit = "backend" },
++#endif
++#if (CONFIG_LIBIVSR == 1)
++    { "ivsr",        "ivsr flag",                  0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_IVSR },    0, 0, FLAGS, .unit = "backend" },
++    { "nif",         "number of input frames in batch sent to the ivsr backend",     OFFSET(nif),              AV_OPT_TYPE_INT,       { .i64 = 1 },    1,      INT_MAX, FLAGS },
+ #endif
+     { NULL }
+ };
+
+-AVFILTER_DNN_DEFINE_CLASS(dnn_processing, DNN_TF | DNN_OV | DNN_TH);
++AVFILTER_DNN_DEFINE_CLASS(dnn_processing, DNN_TF | DNN_OV | DNN_TH | DNN_IVSR);
++
++#define MAX_PROCESSING_QUEUE 48
++
+
+ static av_cold int init(AVFilterContext *context)
+ {
+     DnnProcessingContext *ctx = context->priv;
+-    return ff_dnn_init(&ctx->dnnctx, DFT_PROCESS_FRAME, context);
++    ctx->dnnctx.in_queue = av_fifo_alloc2(MAX_PROCESSING_QUEUE, sizeof(AVFrame *), AV_FIFO_FLAG_AUTO_GROW);
++    if (!ctx->dnnctx.in_queue)
++        return AVERROR(ENOMEM);
++    ctx->dnnctx.out_queue = av_fifo_alloc2(MAX_PROCESSING_QUEUE, sizeof(AVFrame *), AV_FIFO_FLAG_AUTO_GROW);
++    if (!ctx->dnnctx.out_queue)
++        return AVERROR(ENOMEM);
++    return 0;
+ }
+
+ static const enum AVPixelFormat pix_fmts[] = {
+-    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
++#if 0
+     AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAYF32,
+     AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+     AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+     AV_PIX_FMT_NV12,
+     AV_PIX_FMT_NONE
++    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
++#else
++    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
++    AV_PIX_FMT_YUV420P,
++    AV_PIX_FMT_BGR48LE,
++    AV_PIX_FMT_RGB48LE,
++    AV_PIX_FMT_YUV420P10LE,
++    AV_PIX_FMT_NONE
++#endif
+ };
+
+ #define LOG_FORMAT_CHANNEL_MISMATCH()                       \
+@@ -89,20 +112,20 @@ static int check_modelinput_inlink(const DNNData *model_input, const AVFilterLin
+     width_idx = dnn_get_width_idx_by_layout(model_input->layout);
+     height_idx = dnn_get_height_idx_by_layout(model_input->layout);
+     // the design is to add explicit scale filter before this filter
+-    if (model_input->dims[height_idx] != -1 &&
+-        model_input->dims[height_idx] != inlink->h) {
+-        av_log(ctx, AV_LOG_ERROR, "the model requires frame height %d but got %d\n",
+-                                   model_input->dims[height_idx],
+-                                   inlink->h);
+-        return AVERROR(EIO);
+-    }
+-    if (model_input->dims[width_idx] != -1 &&
+-        model_input->dims[width_idx] != inlink->w) {
+-        av_log(ctx, AV_LOG_ERROR, "the model requires frame width %d but got %d\n",
+-                                   model_input->dims[width_idx],
+-                                   inlink->w);
+-        return AVERROR(EIO);
+-    }
++    //if (model_input->dims[height_idx] != -1 &&
++    //    model_input->dims[height_idx] != inlink->h) {
++    //    av_log(ctx, AV_LOG_ERROR, "the model requires frame height %d but got %d\n",
++    //                               model_input->dims[height_idx],
++    //                               inlink->h);
++    //    return AVERROR(EIO);
++    //}
++    //if (model_input->dims[width_idx] != -1 &&
++    //    model_input->dims[width_idx] != inlink->w) {
++    //    av_log(ctx, AV_LOG_ERROR, "the model requires frame width %d but got %d\n",
++    //                               model_input->dims[width_idx],
++    //                               inlink->w);
++    //    return AVERROR(EIO);
++    //}
+     if (model_input->dt != DNN_FLOAT) {
+         avpriv_report_missing_feature(ctx, "data type rather than DNN_FLOAT");
+         return AVERROR(EIO);
+@@ -111,6 +134,8 @@ static int check_modelinput_inlink(const DNNData *model_input, const AVFilterLin
+     switch (fmt) {
+     case AV_PIX_FMT_RGB24:
+     case AV_PIX_FMT_BGR24:
++    case AV_PIX_FMT_RGB48LE:
++    case AV_PIX_FMT_BGR48LE:
+         if (model_input->dims[dnn_get_channel_idx_by_layout(model_input->layout)] != 3) {
+             LOG_FORMAT_CHANNEL_MISMATCH();
+             return AVERROR(EIO);
+@@ -124,6 +149,7 @@ static int check_modelinput_inlink(const DNNData *model_input, const AVFilterLin
+     case AV_PIX_FMT_YUV410P:
+     case AV_PIX_FMT_YUV411P:
+     case AV_PIX_FMT_NV12:
++    case AV_PIX_FMT_YUV420P10LE:
+         if (model_input->dims[dnn_get_channel_idx_by_layout(model_input->layout)] != 1) {
+             LOG_FORMAT_CHANNEL_MISMATCH();
+             return AVERROR(EIO);
+@@ -144,6 +170,11 @@ static int config_input(AVFilterLink *inlink)
+     int result;
+     DNNData model_input;
+     int check;
++    result = ff_dnn_init(&ctx->dnnctx, DFT_PROCESS_FRAME, context);
++    if (result != 0) {
++        av_log(ctx, AV_LOG_ERROR, "could not initialize dnn module\n");
++        return result;
++    }
+
+     result = ff_dnn_get_input(&ctx->dnnctx, &model_input);
+     if (result != 0) {
+@@ -182,12 +213,15 @@ static int prepare_uv_scale(AVFilterLink *outlink)
+                 ctx->sws_uv_height = inlink->h >> 1;
+             } else {
+                 const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
++                const AVComponentDescriptor comp = desc->comp[0];
+                 int sws_src_h = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
+                 int sws_src_w = AV_CEIL_RSHIFT(inlink->w, desc->log2_chroma_w);
+                 int sws_dst_h = AV_CEIL_RSHIFT(outlink->h, desc->log2_chroma_h);
+                 int sws_dst_w = AV_CEIL_RSHIFT(outlink->w, desc->log2_chroma_w);
+-                ctx->sws_uv_scale = sws_getContext(sws_src_w, sws_src_h, AV_PIX_FMT_GRAY8,
+-                                                   sws_dst_w, sws_dst_h, AV_PIX_FMT_GRAY8,
++                ctx->sws_uv_scale = sws_getContext(sws_src_w, sws_src_h,
++                                                   comp.depth == 10 ? AV_PIX_FMT_GRAY10 : AV_PIX_FMT_GRAY8,
++                                                   sws_dst_w, sws_dst_h,
++                                                   comp.depth == 10 ? AV_PIX_FMT_GRAY10 : AV_PIX_FMT_GRAY8,
+                                                    SWS_BICUBIC, NULL, NULL, NULL);
+                 ctx->sws_uv_height = sws_src_h;
+             }
+@@ -258,22 +292,43 @@ static int flush_frame(AVFilterLink *outlink, int64_t pts, int64_t *out_pts)
+         return -1;
+     }
+
+-    do {
+-        AVFrame *in_frame = NULL;
+-        AVFrame *out_frame = NULL;
+-        async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
+-        if (out_frame) {
+-            if (isPlanarYUV(in_frame->format))
+-                copy_uv_planes(ctx, out_frame, in_frame);
+-            av_frame_free(&in_frame);
+-            ret = ff_filter_frame(outlink, out_frame);
+-            if (ret < 0)
+-                return ret;
+-            if (out_pts)
+-                *out_pts = out_frame->pts + pts;
+-        }
+-        av_usleep(5000);
+-    } while (async_state >= DAST_NOT_READY);
++    if (ctx->dnnctx.nif == 1) {
++        do {
++            AVFrame *in_frame = NULL;
++            AVFrame *out_frame = NULL;
++            async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
++            if (out_frame) {
++                if (isPlanarYUV(in_frame->format))
++                    copy_uv_planes(ctx, out_frame, in_frame);
++                av_frame_free(&in_frame);
++                ret = ff_filter_frame(outlink, out_frame);
++                if (ret < 0)
++                    return ret;
++                if (out_pts)
++                    *out_pts = out_frame->pts + pts;
++            }
++            av_usleep(5000);
++        } while (async_state >= DAST_NOT_READY);
++    } else {
++        do {
++            AVFrame *in_frame = NULL;
++            AVFrame *out_frame = NULL;
++            async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
++            if(async_state == DAST_SUCCESS) {
++                if (av_fifo_can_read(ctx->dnnctx.out_queue) >= ctx->dnnctx.nif) {
++                    for (int i = 0; i < ctx->dnnctx.nif; i++) {
++                        av_fifo_read(ctx->dnnctx.out_queue, &out_frame, 1);
++                        ret = ff_filter_frame(outlink, out_frame);
++                        if (ret < 0)
++                            return ret;
++                    }
++                }
++                else
++                    break;
++            }
++            av_usleep(5000);
++        } while (async_state >= DAST_NOT_READY);
++    }
+
+     return 0;
+ }
+@@ -291,8 +346,47 @@ static int activate(AVFilterContext *filter_ctx)
+
+     FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
+
+-    do {
+-        // drain all input frames
++    if (ctx->dnnctx.nif <= 0) {
++        av_log(ctx, AV_LOG_ERROR, "the model reflects NIF is %d, please check \n",
++                                   ctx->dnnctx.nif);
++        return AVERROR(EIO);
++    }
++
++    if (ctx->dnnctx.nif == 1) {
++        do {
++            // drain all input frames
++            ret = ff_inlink_consume_frame(inlink, &in);
++            if (ret < 0)
++                return ret;
++            if (ret > 0) {
++                out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
++                if (!out) {
++                    av_frame_free(&in);
++                    return AVERROR(ENOMEM);
++                }
++                av_frame_copy_props(out, in);
++                if (ff_dnn_execute_model(&ctx->dnnctx, in, out) != 0) {
++                    return AVERROR(EIO);
++                }
++            }
++        } while (ret > 0);
++
++        // drain all processed frames
++        do {
++            AVFrame *in_frame = NULL;
++            AVFrame *out_frame = NULL;
++            async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
++            if (out_frame) {
++                if (isPlanarYUV(in_frame->format))
++                    copy_uv_planes(ctx, out_frame, in_frame);
++                av_frame_free(&in_frame);
++                ret = ff_filter_frame(outlink, out_frame);
++                if (ret < 0)
++                    return ret;
++                got_frame = 1;
++            }
++        } while (async_state == DAST_SUCCESS);
++    } else {
+         ret = ff_inlink_consume_frame(inlink, &in);
+         if (ret < 0)
+             return ret;
+@@ -303,27 +397,28 @@ static int activate(AVFilterContext *filter_ctx)
+                 return AVERROR(ENOMEM);
+             }
+             av_frame_copy_props(out, in);
++            av_fifo_write(ctx->dnnctx.in_queue, &in, 1);
++            av_fifo_write(ctx->dnnctx.out_queue, &out, 1);
++        }
++        if(av_fifo_can_read(ctx->dnnctx.in_queue) == ctx->dnnctx.nif) {
+             if (ff_dnn_execute_model(&ctx->dnnctx, in, out) != 0) {
+                 return AVERROR(EIO);
+             }
++            AVFrame *in_frame = NULL;
++            AVFrame *out_frame = NULL;
++            async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
++            if(async_state == DAST_SUCCESS) {
++                av_frame_free(&in_frame);
++                for (int i = 0; i < ctx->dnnctx.nif; i++) {
++                    av_fifo_read(ctx->dnnctx.out_queue, &out_frame, 1);
++                    ret = ff_filter_frame(outlink, out_frame);
++                    if (ret < 0)
++                        return ret;
++                    got_frame += 1;
++                }
++            }
+         }
+-    } while (ret > 0);
+-
+-    // drain all processed frames
+-    do {
+-        AVFrame *in_frame = NULL;
+-        AVFrame *out_frame = NULL;
+-        async_state = ff_dnn_get_result(&ctx->dnnctx, &in_frame, &out_frame);
+-        if (out_frame) {
+-            if (isPlanarYUV(in_frame->format))
+-                copy_uv_planes(ctx, out_frame, in_frame);
+-            av_frame_free(&in_frame);
+-            ret = ff_filter_frame(outlink, out_frame);
+-            if (ret < 0)
+-                return ret;
+-            got_frame = 1;
+-        }
+-    } while (async_state == DAST_SUCCESS);
++    }
+
+     // if frame got, schedule to next filter
+     if (got_frame)
+diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
+index dc1d5f3593..75b0f6c4ba 100644
+--- a/libswscale/swscale_unscaled.c
++++ b/libswscale/swscale_unscaled.c
+@@ -1752,6 +1752,98 @@ static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
+     return srcSliceH;
+ }
+
++static int uint16_y_to_float_y_wrapper(SwsContext *c, const uint8_t *src[],
++                                     int srcStride[], int srcSliceY,
++                                     int srcSliceH, uint8_t *dst[], int dstStride[])
++{
++    int y, x;
++    ptrdiff_t srcStrideUint16 = srcStride[0] >> 1;
++    ptrdiff_t dstStrideFloat = dstStride[0] >> 2;
++    const uint16_t *srcPtr = (const uint16_t *)(src[0] + srcStride[0] * srcSliceY);
++    float *dstPtr = (float *)(dst[0] + dstStride[0] * srcSliceY);
++    const float float_norm_factor = 1.0f / 65535.0f;
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->srcW; ++x) {
++            dstPtr[x] =  (float)srcPtr[x] * float_norm_factor;
++        }
++        srcPtr += srcStrideUint16;
++        dstPtr += dstStrideFloat;
++    }
++
++    return srcSliceH;
++}
++
++static int float_y_to_uint16_y_wrapper(SwsContext *c, const uint8_t* src[],
++                                       int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    int y, x;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    ptrdiff_t dstStrideUint16 = dstStride[0] >> 1;
++    const float *srcPtr = (const float *)(src[0] + srcStride[0] * srcSliceY);
++    uint16_t *dstPtr = (uint16_t*)(dst[0] + dstStride[0] * srcSliceY);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->srcW; ++x) {
++            dstPtr[x] = av_clip_uint16(lrintf(65535.0f * srcPtr[x]));
++        }
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStrideUint16;
++    }
++
++    return srcSliceH;
++}
++
++static int uint10_y_to_float_y_wrapper(SwsContext *c, const uint8_t *src[],
++                                     int srcStride[], int srcSliceY,
++                                     int srcSliceH, uint8_t *dst[], int dstStride[])
++{
++    int y, x;
++    ptrdiff_t srcStrideUint16 = srcStride[0] >> 1;
++    ptrdiff_t dstStrideFloat = dstStride[0] >> 2;
++    const uint16_t *srcPtr = (const uint16_t *)(src[0] + srcStride[0] * srcSliceY);
++    float *dstPtr = (float *)(dst[0] + dstStride[0] * srcSliceY);
++    const float float_norm_factor = 1.0f / 1023.0f;
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->srcW; ++x) {
++            dstPtr[x] =  (float)srcPtr[x] * float_norm_factor;
++        }
++
++        srcPtr += srcStrideUint16;
++        dstPtr += dstStrideFloat;
++    }
++
++    return srcSliceH;
++}
++
++static int float_y_to_uint10_y_wrapper(SwsContext *c, const uint8_t* src[],
++                                       int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    int y, x;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    ptrdiff_t dstStrideUint16 = dstStride[0] >> 1;
++    const float *srcPtr = (const float *)(src[0] + srcStride[0] * srcSliceY);
++    uint16_t *dstPtr = (uint16_t*)(dst[0] + dstStride[0] * srcSliceY);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->srcW; ++x) {
++            int value = lrintf(1023.0f * srcPtr[x]);
++            if (value < 0) {
++                value = 0;
++            } else if (value > 1023) {
++                value = 1023;
++            }
++            dstPtr[x] = (uint16_t)value;
++        }
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStrideUint16;
++    }
++
++    return srcSliceH;
++}
++
+ /* unscaled copy like stuff (assumes nearly identical formats) */
+ static int packedCopyWrapper(SwsContext *c, const uint8_t *src[],
+                              int srcStride[], int srcSliceY, int srcSliceH,
+@@ -2228,6 +2320,24 @@ void ff_get_unscaled_swscale(SwsContext *c)
+         c->convert_unscaled = float_y_to_uint_y_wrapper;
+     }
+
++    /* 16bit Y to float Y */
++    if (srcFormat == AV_PIX_FMT_GRAY16 && dstFormat == AV_PIX_FMT_GRAYF32){
++        c->convert_unscaled = uint16_y_to_float_y_wrapper;
++    }
++
++    /* float Y to 16bit Y */
++    if (srcFormat == AV_PIX_FMT_GRAYF32 && dstFormat == AV_PIX_FMT_GRAY16){
++        c->convert_unscaled = float_y_to_uint16_y_wrapper;
++    }
++    /* 10bit Y to float Y */
++    if (srcFormat == AV_PIX_FMT_GRAY10 && dstFormat == AV_PIX_FMT_GRAYF32){
++        c->convert_unscaled = uint10_y_to_float_y_wrapper;
++    }
++
++    /* float Y to 10bit Y */
++    if (srcFormat == AV_PIX_FMT_GRAYF32 && dstFormat == AV_PIX_FMT_GRAY10){
++        c->convert_unscaled = float_y_to_uint10_y_wrapper;
++    }
+     /* LQ converters if -sws 0 or -sws 4*/
+     if (c->flags&(SWS_FAST_BILINEAR|SWS_POINT)) {
+         /* yv12_to_yuy2 */
+--
+2.34.1
