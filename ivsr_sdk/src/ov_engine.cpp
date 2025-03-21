@@ -75,7 +75,13 @@ IVSRStatus ov_engine::init_impl() {
         instance_.add_extension(custom_lib_);
     // set property for ov instance
     for (auto&& item : configs_) {
-        instance_.set_property(item.first, item.second);
+        try {
+            instance_.set_property(item.first, item.second);
+        } catch (const ov::Exception& e) {
+            std::cerr << "[Error]: " << "Caught an OpenVINO exception: " << e.what() << std::endl;
+            return UNSUPPORTED_CONFIG;
+        }
+
     }
     // read model
     std::shared_ptr<ov::Model> model;

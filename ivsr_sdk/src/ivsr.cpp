@@ -380,7 +380,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     IVSRStatus status = ovEng->init();
     if (status != IVSRStatus::OK) {
         ivsr_status_log(status, "in ivsr_init");
-        return IVSRStatus::UNSUPPORTED_SHAPE;
+        return IVSRStatus::GENERAL_ERROR;
     }
 
     auto res = ovEng->create_infer_requests(infer_request_num);
