@@ -79,7 +79,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates tar g++ wget pkg-config nasm yasm libglib2.0-dev flex bison gobject-introspection libgirepository1.0-dev \
     python3-dev libx11-dev libxv-dev libxt-dev libasound2-dev libpango1.0-dev libtheora-dev libvisual-0.4-dev libgl1-mesa-dev \
-    libcurl4-gnutls-dev librtmp-dev mjpegtools libx264-dev libx265-dev libde265-dev libva-dev libtbb-dev && \
+    libcurl4-gnutls-dev librtmp-dev libx264-dev libx265-dev libde265-dev libva-dev libtbb-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Build iVSR SDK

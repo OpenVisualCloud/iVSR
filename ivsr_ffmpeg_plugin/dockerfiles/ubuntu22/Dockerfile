@@ -263,7 +263,6 @@ RUN apt-get update && \
     libgl1-mesa-dev \
     libcurl4-gnutls-dev \
     librtmp-dev \
-    mjpegtools \
     libx264-dev \
     libx265-dev \
     libde265-dev \
