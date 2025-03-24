@@ -187,17 +187,17 @@ IVSRStatus ov_engine::init_impl() {
         get_default_layout(model->outputs()[0], layout);
         output_info.model().set_layout(layout);
     }
-    if (input_tensor_desc_.precision != nullptr) {
+    if (input_tensor_desc_.precision[0] != '\0') {
         input_info.tensor().set_element_type(precision_string_to_ov.at(std::string(input_tensor_desc_.precision)));
     }
-    if (input_tensor_desc_.layout != nullptr) {
+    if (input_tensor_desc_.layout[0] != '\0') {
         const ov::Layout input_tensor_layout{input_tensor_desc_.layout};
         input_info.tensor().set_layout(input_tensor_layout);
     }
-    if (output_tensor_desc_.precision != nullptr) {
+    if (output_tensor_desc_.precision[0] != '\0') {
         output_info.tensor().set_element_type(precision_string_to_ov.at(std::string(output_tensor_desc_.precision)));
     }
-    if (output_tensor_desc_.layout != nullptr) {
+    if (output_tensor_desc_.layout[0] != '\0') {
         const ov::Layout output_tensor_layout{output_tensor_desc_.layout};
         output_info.tensor().set_layout(output_tensor_layout);
     }
