@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# Copyright 2025 Intel Corporation
+# SPDX-License-Identifier: BSD-3-Clause
+
 enable_ov_patch="false"
 
 # Default os_version set to ubuntu22
