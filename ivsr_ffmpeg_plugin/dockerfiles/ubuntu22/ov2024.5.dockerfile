@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: BSD 3-Clause License
 #
-# Copyright (c) 2023, Intel Corporation
+# Copyright (c) 2025, Intel Corporation
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without

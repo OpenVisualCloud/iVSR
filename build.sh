@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Copyright 2025 Intel Corporation
+# SPDX-License-Identifier: BSD-3-Clause
+
 set -e
 
 base_dir=$(pwd)

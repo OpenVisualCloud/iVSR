@@ -1,5 +1,5 @@
-# Copyright (C) 2023 Intel Corporation
-# SPDX-License-Identifier: AI TECHNOLOGY EVALUATION LICENSE
+# Copyright (C) 2025 Intel Corporation
+# SPDX-License-Identifier: BSD-3-Clause
 #
 cmake_minimum_required(VERSION 3.10)
 
