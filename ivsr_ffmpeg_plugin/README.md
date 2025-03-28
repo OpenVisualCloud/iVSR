@@ -19,9 +19,11 @@ Additionally, there are other parameters that you can use. These parameters are 
 |device|device for inference task|CPU|CPU or GPU|
 |model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for one CUSTOM VSR, 4 for TSENet|
 |normalize_factor|factor for normalization|1.0|255.0 for Enhanced EDSR, 1.0 for other models supported in current version|
+|num_streams|number of execution streams for the throughput mode (now valid only for GPU devices).|1|use `benchmark_app` (a tool provided by OpenVINO Toolkit), to get the appropriate value for the best throughput|
 |extension|extension lib file full path, required for loading Enhanced BasicVSR model|
 |op_xml|custom op xml file full path, required for loading Enhanced BasicVSR model|
 |nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR, 1 for other models supported in current version|
+|nireq|number of request|0|use the default setting or set it to match the number of cpu cores|
 
 Here are some examples of FFmpeg command lines to run inference with the supported models using the `ivsr` backend.<br>
 
