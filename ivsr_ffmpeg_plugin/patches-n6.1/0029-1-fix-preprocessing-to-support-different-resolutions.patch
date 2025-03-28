@@ -39,5 +39,6 @@ index 09fea90e20..79a6f66212 100644
              sws_ctx = sws_getContext(frame->width,
                                       frame->height,
                                       frame->format,
---
+-- 
 2.34.1
+

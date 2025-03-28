@@ -27,5 +27,6 @@ index 4a0fab99cd..0e4aef5152 100644
      // customize layout for Basic_VSR and TSENet
      if (ivsr_model->model_type == BASICVSR) {
          strcpy(input_tensor_desc_set.layout, "NFHWC");
---
+-- 
 2.34.1
+

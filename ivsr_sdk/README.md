@@ -2,7 +2,7 @@
 
 Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK designed to support all kinds of AI media processing algorithms.
 
-The SDK Core consists of two parts: the patch solution part and the task scheduler part.
+The SDK Core consists of two parts: the patch solution part and the task scheduler part.  
 1. The patch solution part splits the frames into small patches, wraps each patch as an inference task, and places it in the task queue in the scheduler module. Each patch has a flag indicating which platform will be used for inference.
 2. The task scheduler part fetches tasks from the task queue and sends them to the corresponding hardware based on the flag set for each patch.
 
@@ -18,7 +18,7 @@ The SDK Core consists of two parts: the patch solution part and the task schedul
 
 ## **API Introduction**
 
-The iVSR toolkit provides a C API. All available interfaces are listed in the following table for [overview](#overview).
+The iVSR toolkit provides a C API. All available interfaces are listed in the following table for [overview](#overview).  
 Please refer to [Detailed Description](#detailed-description) for more information.
 
 ### **Overview**
@@ -38,7 +38,7 @@ Please refer to [Detailed Description](#detailed-description) for more informati
 
 #### **ivsr_init**
 
-Initializes the iVSR system with the given configuration.
+Initializes the iVSR system with the given configuration.  
 
 **Syntax**:
 ```c
@@ -110,12 +110,12 @@ Perform a VSR task asynchronously.
 **Syntax**
 
 ```C
-IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb);
+IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb); 
 ```
 
 **Parameters**
 
-- `handle` A handle for VSR processing.
+- `handle` A handle for VSR processing. 
 - `input_data` Input data address for a VSR task, which points to the contents of input data obtained by user input.
 - `output_data` Output data address for the VSR task output, which points to the output data buffer allocated according to model output shape.
 - `cb` A callback function for user to know something about the VSR task, e.g. indicating whether the VSR task has completed.
