@@ -615,7 +615,7 @@ IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
     {
         case IVSRAttrKey::IVSR_VERSION:
         {
-            value = (void *)"ivsr_release:2024/05";
+            value = (void *)"ivsr_release:2025/03";
             break;
         }
         case IVSRAttrKey::INPUT_TENSOR_DESC:
