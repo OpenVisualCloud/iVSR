@@ -1,17 +1,15 @@
 # Intel Video Super Resolution Development Kit
 
+Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK designed to support all kinds of AI media processing algorithms.
 
-Intel Video Super Resolution Development Kit (iVSR SDK) is an SDK which is designed to support all kinds of AI media processing algorithms.
-
-The SDK Core consists of two parts, one is the patch solution part, the other is the task scheduler part. 
-1. The patch solution part will split the frames into small patches, then the small patch will be wrapped as one inference task and put it in the task queue in the scheduler module. In addition, each small patch will have a flag to indicate which platform will be used for inference.
-1. The task scheduler part will fetch task from the task queue and send the task to the corresponding hardware according to the flag set for each small patch.
+The SDK Core consists of two parts: the patch solution part and the task scheduler part.
+1. The patch solution part splits the frames into small patches, wraps each patch as an inference task, and places it in the task queue in the scheduler module. Each patch has a flag indicating which platform will be used for inference.
+2. The task scheduler part fetches tasks from the task queue and sends them to the corresponding hardware based on the flag set for each patch.
 
 <br />
 
 ## **Feature Overview**
 
-<!-- ![overview](./figs/iVSR_SDK.png) -->
 <div align=center>
 <img src="./figs/iVSR_SDK.png" width = 75% height = 75% />
 </div>
@@ -20,34 +18,33 @@ The SDK Core consists of two parts, one is the patch solution part, the other is
 
 ## **API Introduction**
 
-
-The iVSR toolkit only provides API for C. All available interfaces are listed in the following table for [overview](#overview). 
+The iVSR toolkit provides a C API. All available interfaces are listed in the following table for [overview](#overview).
 Please refer to [Detailed Description](#detailed-description) for more information.
-
 
 ### **Overview**
 
-|Function name|Operation|
-|:--|:--|
-|[ivsr_init](#ivsr_init)|Initialize the iVSR environment.|
-|[ivsr_process](#ivsr_process)|Perform a VSR task.|
-|[ivsr_reconfig](#ivsr_reconfig)|Reset and re-config iVSR environment. THIS API IS NOT WELL IMPLEMENTED YET.|
-|[ivsr_get_attr](#ivsr_get_attr)|Get the iVSR properties/attributes.|
-|[ivsr_deinit](#ivsr_deinit)|De-initialize the resources allocated for the iVSR environment.|
+| Function Name         | Operation                                                                 |
+|------------------------|---------------------------------------------------------------------------|
+| [ivsr_init](#ivsr_init) | Initialize the iVSR environment.                                         |
+| [ivsr_process](#ivsr_process) | Processes input data and produces output data synchronously.          |
+| [ivsr_process_async](#ivsr_process_async) | Asynchronously processes input data and produces output data. |
+| [ivsr_reconfig](#ivsr_reconfig) | Reconfigure the iVSR environment with new configurations.(THIS API IS NOT WELL IMPLEMENTED YET.)          |
+| [ivsr_get_attr](#ivsr_get_attr) | Retrieve attributes from the iVSR environment.                     |
+| [ivsr_deinit](#ivsr_deinit) | Deinitialize the iVSR environment and release resources.              |
 
+<br />
 
 ### **Detailed Description**
 
-
 #### **ivsr_init**
 
-Initialize the iVSR environment.
+Initializes the iVSR system with the given configuration.
 
-**Syntax**
-
-```C 
-IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle); 
+**Syntax**:
+```c
+IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle);
 ```
+
 **Parameters**
 
 - `configs` Configurations to initialize the intel VSR SDK. Including the following configurations:
@@ -58,6 +55,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle);
     |TARGET_DEVICE|Required. Device to run the inference.|
     |CUSTOM_LIB|Optional. Path to extension lib file, required for loading Extended BasicVSR model|
     |CLDNN_CONFIG|Optional. Path to custom op xml file, required for loading Extended BasicVSR model|
+    |INFER_REQ_NUMBER|Optional. To specify inference request number|
     |PRECISION|Optional. To set inference precision for hardware|
     |RESHAPE_SETTINGS|Optional. To set reshape setting for the input model|
     |INPUT_RES|Required. To set input frame resolution in format `<width>,<height>`|
@@ -105,10 +103,34 @@ The method performs VSR processing with the given input data and generates the o
 
 `IVSRStatus`	Return a status to indicate whether VSR processing is successful or not.
 
+#### **ivsr_process_async**
+
+Perform a VSR task asynchronously.
+
+**Syntax**
+
+```C
+IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output_data, ivsr_cb_t* cb);
+```
+
+**Parameters**
+
+- `handle` A handle for VSR processing.
+- `input_data` Input data address for a VSR task, which points to the contents of input data obtained by user input.
+- `output_data` Output data address for the VSR task output, which points to the output data buffer allocated according to model output shape.
+- `cb` A callback function for user to know something about the VSR task, e.g. indicating whether the VSR task has completed.
+
+**Description**
+
+The method performs VSR processing asynchronously with the given input data and generates the output data.
+
+**Return Values**
+
+`IVSRStatus`	Return a status to indicate whether VSR processing is successful or not.
 
 #### **ivsr_reconfig**
 
-Reset and re-config iVSR environment.
+Reconfigure the iVSR environment with new configurations.(NOT WELL IMPLEMENTED YET.)
 
 **Syntax**
 
@@ -129,10 +151,9 @@ IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs);
 
 `IVSRStatus`	Return a status to indicate whether reconfiguration is successful or not.
 
-
 #### **ivsr_get_attr**
 
-Get the iVSR properties/attributes.
+Retrieve attributes from the iVSR environment.
 
 **Syntax**
 
@@ -162,10 +183,9 @@ This method is used to get the properties/attributes of the VSR environment that
 
 `IVSRStatus`	Return a status to indicate whether the attribute is gotten successfully.
 
-
 #### **ivsr_deinit**
 
-De-initialize the resources allocated for the iVSR environment.
+Deinitialize the iVSR environment and release resources.
 
 **Syntax**
 
@@ -181,7 +201,6 @@ IVSRStatus ivsr_deinit(ivsr_handle handle);
 
 The method deinitializes the handle and releases the resources allocated for iVSR process.
 
-
 **Return Values**
 
 `IVSRStatus`	Return a status to indicate whether VSR deinitialization is successful.
@@ -189,7 +208,6 @@ The method deinitializes the handle and releases the resources allocated for iVS
 <br />
 
 ##  **VSR Sample**
-
 
 There is a simple C++ sample to perform BasicVSR/EDSR/SVP inference on OpenVINO backend. Please add CMake option **-DENABLE_SAMPLE=ON** and build/install its dependency `OpenCV` component befor that. You can reach the sample from `<iVSR project path>/ivsr_sdk/bin/vsr_sample`. You can get the help messages by running `./vsr_sample -h`  and see the default settings of parameters.
 
