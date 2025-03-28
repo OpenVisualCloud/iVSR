@@ -20,9 +20,9 @@ index 0e4aef5152..a4c0faa4ab 100644
 +    { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(options.normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
      { NULL }
  };
-
+ 
 @@ -324,9 +323,10 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
-
+ 
      input.data = request->in_frames;
      in_data = input.data;
 -    //scale/mean can't be retrieved, so they're 0.0 by default
@@ -33,11 +33,11 @@ index 0e4aef5152..a4c0faa4ab 100644
 +    // See `input_tensor_desc_set` in func ff_dnn_load_model_ivsr() in this file for more details.
 +    input.scale = input.dt == DNN_FLOAT ? 0.0f : 1.0f;
      input.mean  = 0.0f;
-
+ 
      ctx->model_input_height = input.height;
 @@ -494,9 +494,9 @@ static void infer_completion_callback(void *args)
      set_dnndata_info(&output, &output_tensor_desc_get);
-
+ 
      output.data = request->out_frames;
 -    //scale/mean can't be retrieved, so they're 0.0 by default
 +    // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
@@ -71,5 +71,6 @@ index 0e4aef5152..a4c0faa4ab 100644
      }
      // customize layout for Basic_VSR and TSENet
      if (ivsr_model->model_type == BASICVSR) {
---
+-- 
 2.34.1
+

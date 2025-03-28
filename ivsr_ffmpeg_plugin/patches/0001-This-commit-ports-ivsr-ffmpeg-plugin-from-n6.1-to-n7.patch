@@ -97,7 +97,7 @@ index 3d09927c98..87c0ff19d8 100644
  DNN-OBJS-$(CONFIG_LIBOPENVINO)               += dnn/dnn_backend_openvino.o
  DNN-OBJS-$(CONFIG_LIBTORCH)                  += dnn/dnn_backend_torch.o
 +DNN-OBJS-$(CONFIG_LIBIVSR)                   += dnn/dnn_backend_ivsr.o
-
+ 
  OBJS-$(CONFIG_DNN)                           += $(DNN-OBJS-yes)
 diff --git a/libavfilter/dnn/dnn_backend_common.c b/libavfilter/dnn/dnn_backend_common.c
 index e45eefd14d..0f42632de8 100644
@@ -1491,7 +1491,7 @@ index bb477348dc..2e955fc5da 100644
  extern const DNNModule ff_dnn_backend_tf;
  extern const DNNModule ff_dnn_backend_torch;
 +extern const DNNModule ff_dnn_backend_ivsr;
-
+ 
  #define OFFSET(x) offsetof(DnnContext, x)
  #define FLAGS AV_OPT_FLAG_FILTERING_PARAM
 @@ -78,6 +79,9 @@ static const DnnBackendInfo dnn_backend_info_list[] = {
@@ -1502,7 +1502,7 @@ index bb477348dc..2e955fc5da 100644
 +        {offsetof(DnnContext, ivsr_option), .module = &ff_dnn_backend_ivsr},
 +#endif
  };
-
+ 
  const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
 @@ -98,6 +102,15 @@ void ff_dnn_init_child_class(DnnContext *ctx)
      for (int i = 0; i < FF_ARRAY_ELEMS(dnn_backend_info_list); i++) {
@@ -1519,7 +1519,7 @@ index bb477348dc..2e955fc5da 100644
 +        av_opt_free(ptr);
      }
  }
-
+ 
 diff --git a/libavfilter/dnn/dnn_io_proc.c b/libavfilter/dnn/dnn_io_proc.c
 index 826110dab0..c4b2af5006 100644
 --- a/libavfilter/dnn/dnn_io_proc.c
@@ -1535,7 +1535,7 @@ index 826110dab0..c4b2af5006 100644
          return 1;
      }
  }
-
+ 
 +static DNNColorOrder map_dnn_color_order(int format) {
 +    switch (format)
 +    {
@@ -1629,7 +1629,7 @@ index 826110dab0..c4b2af5006 100644
 @@ -68,8 +137,14 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
          return AVERROR(ENOSYS);
      }
-
+ 
 +    DNNColorOrder dst_color_order = map_dnn_color_order(frame->format);
 +    if (dst_color_order != output->order) {
 +        transpose(output, dst_color_order);
@@ -1643,7 +1643,7 @@ index 826110dab0..c4b2af5006 100644
          if (!middle_data) {
 @@ -81,32 +156,37 @@ int ff_proc_from_dnn_to_frame(AVFrame *frame, DNNData *output, void *log_ctx)
      }
-
+ 
      switch (frame->format) {
 +    case AV_PIX_FMT_RGB48LE:
 +    case AV_PIX_FMT_BGR48LE:
@@ -1792,7 +1792,7 @@ index 826110dab0..c4b2af5006 100644
          av_log(log_ctx, AV_LOG_ERROR, "dnn_process input data doesn't support type: UINT8 "
                                        "scale: %f, mean: %f\n", input->scale, input->mean);
 @@ -209,55 +307,67 @@ int ff_proc_from_frame_to_dnn(AVFrame *frame, DNNData *input, void *log_ctx)
-
+ 
      src_data = (void **)frame->data;
      linesize[0] = frame->linesize[0];
 -    if (input->layout == DL_NCHW) {
@@ -1804,7 +1804,7 @@ index 826110dab0..c4b2af5006 100644
 -        src_data = &middle_data;
 -        linesize[0] = frame->width * 3;
 -    }
-
+ 
      switch (frame->format) {
 +    case AV_PIX_FMT_RGB48LE:
 +    case AV_PIX_FMT_BGR48LE:
@@ -1971,7 +1971,7 @@ index 6b9c6f8d7f..1c21eed860 100644
      if (ctx->model_outputnames) {
          for (int i = 0; i < ctx->nb_outputs; i++)
              av_free(ctx->model_outputnames[i]);
-
+ 
          av_freep(&ctx->model_outputnames);
      }
 +
@@ -1982,12 +1982,12 @@ index 66086409be..0444526d17 100644
 --- a/libavfilter/dnn_interface.h
 +++ b/libavfilter/dnn_interface.h
 @@ -28,6 +28,7 @@
-
+ 
  #include <stdint.h>
  #include "libavutil/frame.h"
 +#include "libavutil/fifo.h"
  #include "avfilter.h"
-
+ 
  #define DNN_GENERIC_ERROR FFERRTAG('D','N','N','!')
 @@ -35,10 +36,11 @@
  typedef enum {
@@ -1997,14 +1997,14 @@ index 66086409be..0444526d17 100644
 +    DNN_TH = 1 << 2,
 +    DNN_IVSR = 1 << 3
  } DNNBackendType;
-
+ 
 -typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4} DNNDataType;
 +typedef enum {DNN_FLOAT = 1, DNN_UINT8 = 4, DNN_UINT16 = 8} DNNDataType;
-
+ 
  typedef enum {
      DCO_NONE,
 @@ -68,6 +70,9 @@ typedef enum {
-
+ 
  typedef struct DNNData{
      void *data;
 +    // TODO: Keep the 3 parameters for iVSR backend only.
@@ -2020,12 +2020,12 @@ index 66086409be..0444526d17 100644
 +    AVFifo *in_queue;
 +    AVFifo *out_queue;
  } DNNExecBaseParams;
-
+ 
  typedef struct DNNExecClassificationParams {
 @@ -138,6 +145,23 @@ typedef struct THOptions {
      int optimize;
  } THOptions;
-
+ 
 +typedef struct iVSROptions {
 +    const AVClass *clazz;
 +
@@ -2044,12 +2044,12 @@ index 66086409be..0444526d17 100644
 +} iVSROptions;
 +
  typedef struct DNNModule DNNModule;
-
+ 
  typedef struct DnnContext {
 @@ -156,6 +180,11 @@ typedef struct DnnContext {
      uint32_t nb_outputs;
      const DNNModule *dnn_module;
-
+ 
 +    //TODO: the following 3 items are for BasicVSR only.
 +    AVFifo *in_queue;
 +    AVFifo *out_queue;
@@ -2057,7 +2057,7 @@ index 66086409be..0444526d17 100644
 +
      int nireq;
      char *device;
-
+ 
 @@ -169,6 +198,9 @@ typedef struct DnnContext {
  #if CONFIG_LIBTORCH
      THOptions torch_option;
@@ -2066,16 +2066,16 @@ index 66086409be..0444526d17 100644
 +    iVSROptions ivsr_option;
 +#endif
  } DnnContext;
-
+ 
  // Stores pointers to functions for loading, executing, freeing DNN models for one of the backends.
 @@ -191,6 +223,7 @@ struct DNNModule {
  const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx);
-
+ 
  void ff_dnn_init_child_class(DnnContext *ctx);
 +void ff_dnn_uninit_child_class(DnnContext *ctx);
  void *ff_dnn_child_next(DnnContext *obj, void *prev);
  const AVClass *ff_dnn_child_class_iterate_with_mask(void **iter, uint32_t backend_mask);
-
+ 
 diff --git a/libavfilter/vf_dnn_processing.c b/libavfilter/vf_dnn_processing.c
 index eb75f06f05..8e7f107e02 100644
 --- a/libavfilter/vf_dnn_processing.c
@@ -2101,13 +2101,13 @@ index eb75f06f05..8e7f107e02 100644
  #endif
      { NULL }
  };
-
+ 
 -AVFILTER_DNN_DEFINE_CLASS(dnn_processing, DNN_TF | DNN_OV | DNN_TH);
 +AVFILTER_DNN_DEFINE_CLASS(dnn_processing, DNN_TF | DNN_OV | DNN_TH | DNN_IVSR);
 +
 +#define MAX_PROCESSING_QUEUE 48
 +
-
+ 
  static av_cold int init(AVFilterContext *context)
  {
      DnnProcessingContext *ctx = context->priv;
@@ -2120,7 +2120,7 @@ index eb75f06f05..8e7f107e02 100644
 +        return AVERROR(ENOMEM);
 +    return 0;
  }
-
+ 
  static const enum AVPixelFormat pix_fmts[] = {
 -    AV_PIX_FMT_RGB24, AV_PIX_FMT_BGR24,
 +#if 0
@@ -2139,7 +2139,7 @@ index eb75f06f05..8e7f107e02 100644
 +    AV_PIX_FMT_NONE
 +#endif
  };
-
+ 
  #define LOG_FORMAT_CHANNEL_MISMATCH()                       \
 @@ -89,20 +112,20 @@ static int check_modelinput_inlink(const DNNData *model_input, const AVFilterLin
      width_idx = dnn_get_width_idx_by_layout(model_input->layout);
@@ -2202,7 +2202,7 @@ index eb75f06f05..8e7f107e02 100644
 +        av_log(ctx, AV_LOG_ERROR, "could not initialize dnn module\n");
 +        return result;
 +    }
-
+ 
      result = ff_dnn_get_input(&ctx->dnnctx, &model_input);
      if (result != 0) {
 @@ -182,12 +213,15 @@ static int prepare_uv_scale(AVFilterLink *outlink)
@@ -2226,7 +2226,7 @@ index eb75f06f05..8e7f107e02 100644
 @@ -258,22 +292,43 @@ static int flush_frame(AVFilterLink *outlink, int64_t pts, int64_t *out_pts)
          return -1;
      }
-
+ 
 -    do {
 -        AVFrame *in_frame = NULL;
 -        AVFrame *out_frame = NULL;
@@ -2280,13 +2280,13 @@ index eb75f06f05..8e7f107e02 100644
 +            av_usleep(5000);
 +        } while (async_state >= DAST_NOT_READY);
 +    }
-
+ 
      return 0;
  }
 @@ -291,8 +346,47 @@ static int activate(AVFilterContext *filter_ctx)
-
+ 
      FF_FILTER_FORWARD_STATUS_BACK(outlink, inlink);
-
+ 
 -    do {
 -        // drain all input frames
 +    if (ctx->dnnctx.nif <= 0) {
@@ -2376,7 +2376,7 @@ index eb75f06f05..8e7f107e02 100644
 -        }
 -    } while (async_state == DAST_SUCCESS);
 +    }
-
+ 
      // if frame got, schedule to next filter
      if (got_frame)
 diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
@@ -2386,7 +2386,7 @@ index dc1d5f3593..75b0f6c4ba 100644
 @@ -1752,6 +1752,98 @@ static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
      return srcSliceH;
  }
-
+ 
 +static int uint16_y_to_float_y_wrapper(SwsContext *c, const uint8_t *src[],
 +                                     int srcStride[], int srcSliceY,
 +                                     int srcSliceH, uint8_t *dst[], int dstStride[])
@@ -2485,7 +2485,7 @@ index dc1d5f3593..75b0f6c4ba 100644
 @@ -2228,6 +2320,24 @@ void ff_get_unscaled_swscale(SwsContext *c)
          c->convert_unscaled = float_y_to_uint_y_wrapper;
      }
-
+ 
 +    /* 16bit Y to float Y */
 +    if (srcFormat == AV_PIX_FMT_GRAY16 && dstFormat == AV_PIX_FMT_GRAYF32){
 +        c->convert_unscaled = uint16_y_to_float_y_wrapper;
@@ -2507,5 +2507,6 @@ index dc1d5f3593..75b0f6c4ba 100644
      /* LQ converters if -sws 0 or -sws 4*/
      if (c->flags&(SWS_FAST_BILINEAR|SWS_POINT)) {
          /* yv12_to_yuy2 */
---
+-- 
 2.34.1
+

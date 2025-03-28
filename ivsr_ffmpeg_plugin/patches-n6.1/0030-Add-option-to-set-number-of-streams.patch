@@ -18,7 +18,7 @@ index 2956014ae9..2a1630e791 100644
      char *reshape_values;
 +    int num_streams;
  } IVSROptions;
-
+ 
  typedef struct IVSRContext {
 @@ -104,6 +105,7 @@ static const AVOption dnn_ivsr_options[] = {
      { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(options.op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
@@ -27,7 +27,7 @@ index 2956014ae9..2a1630e791 100644
 +    { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(options.num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
      { NULL }
  };
-
+ 
 @@ -795,6 +797,7 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
      ivsr_config_t *config_reshape = NULL;
      ivsr_config_t *config_input_res = NULL;
@@ -39,7 +39,7 @@ index 2956014ae9..2a1630e791 100644
 @@ -1029,15 +1032,21 @@ DNNModel *ff_dnn_load_model_ivsr(const char *model_filename,
      if (config_reshape == NULL)
          goto err;
-
+ 
 +    char nstreams_string[40] = {0};
 +    sprintf(nstreams_string, "%d", ctx->options.num_streams);
 +    config_nstreams = create_and_link_config(config_reshape, NUM_STREAMS, nstreams_string, ctx);
@@ -52,7 +52,7 @@ index 2956014ae9..2a1630e791 100644
          if (config_customlib == NULL)
              goto err;
      }
-
+ 
      if (ctx->options.op_xml != NULL) {
          config_cldnn = create_and_link_config(ctx->options.extension != NULL ?
 -                                              config_customlib : config_reshape,
@@ -60,5 +60,6 @@ index 2956014ae9..2a1630e791 100644
                                                CLDNN_CONFIG, ctx->options.op_xml, ctx);
          if (config_cldnn == NULL)
              goto err;
---
+-- 
 2.34.1
+
