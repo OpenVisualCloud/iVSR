@@ -24,7 +24,7 @@ prepare_dependencies() {
     automake \
     build-essential \
     apt-utils cmake cython3 flex bison gcc g++ git make patch pkg-config wget \
-    libdrm-dev libudev-dev libtool libusb-1.0-0-dev xz-utils ocl-icd-opencl-dev opencl-headers \
+    libdrm-dev libtool libusb-1.0-0-dev xz-utils ocl-icd-opencl-dev opencl-headers \
     apt-utils gpg-agent software-properties-common wget python3-dev libpython3-dev python3-pip
 }
 
