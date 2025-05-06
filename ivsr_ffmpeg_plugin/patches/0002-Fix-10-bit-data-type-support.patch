@@ -1,0 +1,29 @@
+From 035a6f2ce659ccc356f5c665677e0b4b7cae872a Mon Sep 17 00:00:00 2001
+From: Xiaoxia Liang <xiaoxia.liang@intel.com>
+Date: Tue, 6 May 2025 14:25:05 +0000
+Subject: [PATCH] Fix 10 bit data type support
+
+Signed-off-by: Xiaoxia Liang <xiaoxia.liang@intel.com>
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 0e64c14a47..8b9edaf20c 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -476,9 +476,10 @@ static void infer_completion_callback(void *args)
+ 
+     output.data = request->out_frames;
+     // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
++    // For *passthrough* cases, the OV backend can help to do the normalization.
+     // FIXME: Apt to make mistakes when changes are made here!
+     output.mean     = 0.0f;
+-    output.scale    = output.dt == DNN_UINT8 ? 1.0f : 0.0f;
++    output.scale    = output.dt == DNN_FLOAT ? 0.0f : 1.0f;
+     // set order based on model type
+     switch (ivsr_model->model_type)
+     {
+-- 
+2.34.1
+
