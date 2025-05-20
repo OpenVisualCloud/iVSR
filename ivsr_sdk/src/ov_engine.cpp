@@ -113,14 +113,6 @@ IVSRStatus ov_engine::init_impl() {
         //input_shape should be static now.
         assert(input_shape.is_static());
 
-        //TODO: is this check for BasicVSR? Is it required anymore??
-        if (input_shape.size() == 5) {
-            if (input_shape[w_index].get_length() % 32 != 0) {
-                std::cout << "[Error]: " << "Current model requires input widths to be divisible by 32" << std::endl;
-                return UNSUPPORTED_SHAPE;
-            }
-        }
-
 #ifdef ENABLE_LOG
         std::cout << "Reshape network to size = [" << input_shape[w_index].get_length()
 			      << "x" << input_shape[h_index].get_length() << "] " << std::endl;
