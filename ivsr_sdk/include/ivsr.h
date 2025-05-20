@@ -31,7 +31,7 @@ typedef struct ivsr_callback {
  *
  */
 typedef struct ivsr_version {
-    const char *api_version; //!< A string representing ibasicvsr sdk version>
+    const char *api_version; //!< A string representing ivsr sdk version>
 } ivsr_version_t;
 
 /**

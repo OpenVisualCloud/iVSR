@@ -1,0 +1,25 @@
+From 0faf169b4a83875c8caf617489c1960d4993a788 Mon Sep 17 00:00:00 2001
+From: Jerry Dong <jerry.dong@intel.com>
+Date: Tue, 20 May 2025 15:12:02 +0800
+Subject: [PATCH] For BasicVSR, make the inference input width 32-aligned.
+
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 8b9edaf20c..e52fe7b131 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -969,6 +969,8 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     char shape_string[40] = {0};
+     switch (ivsr_model->model_type) {
+     case BASICVSR:
++        //for BasicVSR, the width requires 32-aligned
++        frame_w = (frame_w + 32 - 1) / 32 * 32;
+         sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+         break;
+     case VIDEOPROC:
+-- 
+2.34.1
+
