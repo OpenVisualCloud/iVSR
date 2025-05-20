@@ -225,7 +225,6 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     std::string verbose, custom_lib, cldnn_config;
     std::vector<size_t> reshape_settings, reso;
     size_t frame_width = 0, frame_height = 0;
-    int reshape_h = 0, reshape_w = 0;
     std::unordered_map<std::string, std::string> config_map;
     size_t infer_request_num = 1;  // default infer_request_num set to 1
     size_t num_streams = 1;  // default num_streams set to 1
@@ -286,13 +285,17 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
                 break;
             case IVSRConfigKey::RESHAPE_SETTINGS:
                 reshape_settings = convert_string_to_vector(static_cast<const char*>(configs->value));
+                /*
+                 * models like EDSR support odd input resolution, so remove the check inside SDK
                 //The layout of RESHAPE SETTINGS is NHW
+                int reshape_h = 0, reshape_w = 0;
                 reshape_h = reshape_settings[ov::layout::height_idx(ov::Layout("NHW"))];
                 reshape_w = reshape_settings[ov::layout::width_idx(ov::Layout("NHW"))];
                 if (reshape_h % 2 != 0 || reshape_w % 2 != 0) {
                     ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, static_cast<const char*>(configs->value));
                     return IVSRStatus::UNSUPPORTED_SHAPE;
                 }
+                */
                 break;
             case IVSRConfigKey::INPUT_RES:
                 reso = convert_string_to_vector(static_cast<const char*>(configs->value));
