@@ -10,7 +10,9 @@ The patches included in `patches` folder are specifically for FFmpeg n7.1.<br>
 To run inference with iVSR SDK, you need to specify `ivsr` as the backend for the `dnn_processing` filter. Here is an example of how to do it: `dnn_processing=dnn_backend=ivsr`. <br>
 Additionally, there are other parameters that you can use. These parameters are listed in the table below:<br>
 
-> **Model dispatch (patch 0005):** Enhanced BasicVSR is the only built-in model (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, and VideoSeal — are configured at runtime via a JSON descriptor file passed with `model_config`. When `model_config` is set, `model_type` is ignored. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.
+> **Model dispatch (patch 0005):** Enhanced BasicVSR is the only built-in model (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, SPAN, and VideoSeal — are configured at runtime via a JSON descriptor file passed with `model_config`. When `model_config` is set, `model_type` is ignored. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.
+
+> **OpenVINO version:** Enhanced BasicVSR requires OpenVINO **2022.3** with custom patches. All JSON-config models (SVP, EDSR, CustVSR, TSENet, RIFE, SPAN, VideoSeal) require OpenVINO **2026.1** (installed via apt). The `build.sh` script in the project root defaults to OV 2026.1.
 
 |AVOption name|Description|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
@@ -20,7 +22,7 @@ Additionally, there are other parameters that you can use. These parameters are 
 |output|output name of the model|NULL|output|
 |device|device for inference task|CPU|CPU or GPU|
 |model_type|Built-in model selector. `0` = Enhanced BasicVSR (only remaining built-in). For all other models, omit `model_type` and set `model_config` instead.|0|0 (BasicVSR only)|
-|model_config|Path to a JSON model descriptor file. When set, `model_type` is ignored and all dispatch uses the JSON config. Canonical configs: `model_configs/{videoproc,edsr,custvsr,tsenet,rife,videoseal}_config.json`. See `ivsr_model_config.template.json` for all fields.|NULL|Full path to the appropriate `*_config.json`|
+|model_config|Path to a JSON model descriptor file. When set, `model_type` is ignored and all dispatch uses the JSON config. Canonical configs: `model_configs/{videoproc,edsr,custvsr,tsenet,rife,span,videoseal}_config.json`. See `ivsr_model_config.template.json` for all fields.|NULL|Full path to the appropriate `*_config.json`|
 |normalize_factor|Legacy normalizing factor for models that do not require input normalization to [0, 1]. For JSON-config models this is handled inside the config.|1.0|255.0 for Enhanced EDSR (legacy), 1.0 for all other models|
 |num_streams|number of execution streams for throughput mode (valid only for GPU devices)|1|use `benchmark_app` to determine the best value|
 |extension|extension lib file full path, required for Enhanced BasicVSR|—|—|
@@ -45,7 +47,7 @@ The `extension` and `op_xml` options are required for Enhanced BasicVSR. After a
 > **All models below use the JSON config dispatch path (patch 0005).** Pass the path to the appropriate config file via `model_config`. Canonical configs are in `ivsr_ffmpeg_plugin/model_configs/`.
 
 ### SVP / VideoProc
-Input pixel format: `rgb24` (RGB model variant) or `yuv420p` (Y-channel model variant). Config file: `model_configs/videoproc_config.json`.
+Input pixel format: `rgb24` (RGB model variant) or `yuv420p` (Y-channel model variant). Raw pixel values `[0, 255]` are passed to the model as float32 without normalisation (`normalize_input: false`, `normalize_output: false`). `color_format_auto: 1` enables automatic I420/RGB colour-format selection based on the input pixel format. Config file: `model_configs/videoproc_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 # RGB variant
@@ -59,7 +61,7 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ```
 
 ### Enhanced EDSR
-Input pixel format: `rgb24`. Config file: `model_configs/edsr_config.json` (output precision is derived from bit depth automatically).
+Input pixel format: `rgb24`. Output precision is fixed at `fp32` (`out_precision: fp32`, `out_precision_depth_derived: false`). Both FP32 and INT8 model variants are supported with the same config. Config file: `model_configs/edsr_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \
@@ -68,16 +70,16 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ```
 
 ### Custom VSR
-Input pixel format: `yuv420p`. Input shape: `[1, (Y channel)1, H, W]`, output shape: `[1, 1, 2xH, 2xW]`. Config file: `model_configs/custvsr_config.json`.
+Input pixel format: `yuv420p` (Y-channel only). Single-frame inference on the luma plane. `color_format_auto: 2` in `model_configs/custvsr_config.json` enables single-channel Y-plane dispatch — the pack/unpack path correctly handles the Y-plane rather than assuming 3-channel RGB. Config file: `model_configs/custvsr_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \
-  -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<customvsr_model.xml>:input=input:output=output:nireq=1:device=CPU:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/custvsr_config.json \
+  -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<custvsr_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/custvsr_config.json \
   -pix_fmt yuv420p test_out.mp4
 ```
 
 ### TSENet
-Input pixel format: `rgb24`. Uses a 3-frame sliding window (`nif=3`) with first-frame duplication priming. Config file: `model_configs/tsenet_config.json`.
+Input pixel format: `rgb24`. Uses a 3-frame sliding window (`nif=3`, `channel_divisor=3`) with first-frame duplication priming (`window_init_dup: true`). Input is passed as raw `[0, 255]` float32 (`normalize_input: false`); output is rescaled from `[0, 1]` to `[0, 255]` (`normalize_output: true`). Config file: `model_configs/tsenet_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \
@@ -86,7 +88,7 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ```
 
 ### RIFE (Frame Interpolation)
-Input pixel format: `rgb24`. Uses a 2-frame sliding window (`nif=2`). Input is normalised to `[0, 1]` (float32); output is scaled back to `[0, 255]`. Config file: `model_configs/rife_config.json`.
+Input pixel format: `rgb24`. Uses a 2-frame sliding window (`nif=2`, `channel_divisor=2`). Input is normalised to `[0, 1]` (float32, `normalize_input: true`); output is scaled back to `[0, 255]` (`normalize_output: true`). 128-pixel alignment (`align: 128`) is applied to pad model input dimensions. Config file: `model_configs/rife_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \
@@ -94,8 +96,17 @@ cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
   test_out.mp4
 ```
 
+### SPAN (Single-Frame SR)
+Input pixel format: `rgb24`. Single-frame super-resolution. Input is normalised to `[0, 1]` (float32, `normalize_input: true`); output is scaled back to `[0, 255]` (`normalize_output: true`). Supports both ×2 and ×4 upscale models with the same config. Config file: `model_configs/span_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<span_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/span_config.json \
+  -pix_fmt yuv420p test_out.mp4
+```
+
 ### VideoSeal (Invisible Watermarking)
-Input pixel format: `rgb24`. Single-frame inference; embeds an invisible watermark into each frame. Input is packed as raw `[0, 255]` float32 (no `/255` normalisation). Config file: `model_configs/videoseal_config.json`.
+Input pixel format: `rgb24`. Single-frame inference; embeds an invisible watermark into each frame. Input and output are raw `[0, 255]` float32 (`normalize_input: false`, `normalize_output: false`). Output dimensions match input (`output_passthrough_dims: true`). Config file: `model_configs/videoseal_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \

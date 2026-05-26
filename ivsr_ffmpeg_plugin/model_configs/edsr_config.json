@@ -1,0 +1,19 @@
+{
+  "_comment":               "Enhanced EDSR single-frame RGB SR. in_precision=f32/out_precision=fp32: explicit float32 I/O (not bit-depth derived). normalize_input/normalize_output=false: model operates on raw [0,255] float32. Works for both FP32 and INT8 model variants.",
+  "name":                   "Enhanced EDSR",
+  "nif":                    1,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "in_precision":           "f32",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        false,
+  "normalize_output":       false,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}

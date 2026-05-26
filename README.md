@@ -75,7 +75,7 @@ These patches are specifically for OpenVINO 2022.3, meaning the Enhanced BasicVS
 Currently, iVSR offers two AI media processing functionalities: Video Super Resolution (VSR) and Smart Video Processing (SVP) for bandwidth optimization. Both functionalities can be run on Intel CPUs and Intel GPUs (including Flex170, Arc770) via OpenVINO and FFmpeg.
 
 ### 1.4.1 Video Super Resolution (VSR)
-Video Super Resolution (VSR) is a technique extensively employed in the AI media enhancement domain to upscale low-resolution videos to high-resolution. iVSR supports `Enhanced BasicVSR`, `Enhanced EDSR`, `TSENet`, and `RIFE` (frame interpolation). It also has the capability to be extended to support additional models via JSON config files.
+Video Super Resolution (VSR) is a technique extensively employed in the AI media enhancement domain to upscale low-resolution videos to high-resolution. iVSR supports `Enhanced BasicVSR`, `Enhanced EDSR`, `TSENet`, `RIFE` (frame interpolation), and `SPAN`. It also has the capability to be extended to support additional models via JSON config files.
 
 - #### i. Enhanced BasicVSR
   `BasicVSR` is a publicly available AI-based VSR algorithm. For more details on the public `BasicVSR`, please refer to this [paper](https://arxiv.org/pdf/2012.02181.pdf).<br><br>
@@ -112,6 +112,14 @@ Video Super Resolution (VSR) is a technique extensively employed in the AI media
   ```plaintext
   Input shape:  [1, (channels * frames)6, H, W]   (2 × RGB frames concatenated along the channel axis)
   Output shape: [1, (channels)3, H, W]            (single interpolated RGB frame)
+  ```
+
+- #### v. SPAN
+  `SPAN` (Swift Parameter-free Attention Network) is a lightweight single-frame super-resolution model. Like RIFE, it expects pixel values normalised to `[0, 1]` (float32) and produces output in the `[0, 1]` range which is scaled back to `[0, 255]`. The model is configured via the JSON config file `model_configs/span_config.json` (`model_config` AVOption).<br><br>
+  The input and output shapes are:
+  ```plaintext
+  Input shape:  [1, (channels)3, H, W]
+  Output shape: [1, (channels)3, scale×H, scale×W]
   ```
 
 ### 1.4.2. Smart Video Processing (SVP)
@@ -209,7 +217,7 @@ The `vsr_sample` is developed using the iVSR SDK and OpenCV. For detailed instru
 ## 3.2 Run with FFmpeg
 After applying the FFmpeg plugin patches and building FFmpeg, refer to [the FFmpeg command line samples](ivsr_ffmpeg_plugin/README.md#how-to-run-inference-with-ffmpeg-plugin) for instructions on running inference with FFmpeg.
 
-> **Model dispatch:** Enhanced BasicVSR uses `model_type=0` (built-in). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, and VideoSeal — are selected by passing a JSON descriptor file via the `model_config` AVOption (e.g. `model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/rife_config.json`). Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`. Custom models can be added without code changes by copying and editing `ivsr_model_config.template.json`.
+> **Model dispatch:** Enhanced BasicVSR uses `model_type=0` (built-in). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, SPAN, and VideoSeal — are selected by passing a JSON descriptor file via the `model_config` AVOption (e.g. `model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/rife_config.json`). Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`. Custom models can be added without code changes by copying and editing `ivsr_model_config.template.json`.
 
 # 4. Model files
 iVSR supports only models in OpenVINO IR format. Contact your Intel representative to obtain the model files, as they are not included in the repo.

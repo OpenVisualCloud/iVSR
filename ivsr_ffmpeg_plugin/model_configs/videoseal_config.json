@@ -1,0 +1,19 @@
+{
+  "_comment":               "VideoSeal invisible watermarking. normalize_input/normalize_output=false: raw [0,255] float32 I/O. output_passthrough_dims=true: output resolution matches input (watermark does not resize). in_precision=f32: explicit float32 input.",
+  "name":                   "VideoSeal",
+  "nif":                    1,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "in_precision":           "f32",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        false,
+  "normalize_output":       false,
+  "output_passthrough_dims": true,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}
