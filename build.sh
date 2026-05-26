@@ -120,9 +120,40 @@ build_ffmpeg() {
     git config --global --add safe.directory ${ffmpeg_dir}
   fi
 
-  # Apply patches
-  cd ${ffmpeg_dir} && cp -rf $base_dir/ivsr_ffmpeg_plugin/patches/*.patch .
-  git am --whitespace=fix *.patch
+  cd ${ffmpeg_dir}
+  git am --abort 2>/dev/null || true
+  # Ensure the target tag is locally reachable (handles a prior clone at a different tag)
+  if ! git rev-parse "${ffmpeg_tag}" >/dev/null 2>&1; then
+    git fetch --depth 1 origin "refs/tags/${ffmpeg_tag}:refs/tags/${ffmpeg_tag}"
+  fi
+  git checkout -f "${ffmpeg_tag}"
+
+  # ---------------------------------------------------------------
+  # Apply all iVSR patches for n8.1.
+  # Patch 0001: strip configure, dnn_interface.c, and swscale_unscaled.c
+  #   hunks — those three files are fully covered by patch 0004.
+  # Patch 0004: n8.1-native patch for configure, dnn_interface.c and
+  #   swscale_unscaled.c (exact n8.1 context; no sed required).
+  # Patches 0002/0003: fix-ups for dnn_backend_ivsr.c (added by 0001).
+  # ---------------------------------------------------------------
+  rm -f *.patch
+  cp "$base_dir/ivsr_ffmpeg_plugin/patches/"*.patch .
+
+  filterdiff \
+    -x '*/configure' \
+    -x '*/dnn_interface.c' \
+    -x '*/swscale_unscaled.c' \
+    0001-*.patch | \
+    git apply --3way --ignore-whitespace -
+
+  git apply --ignore-whitespace 0004-*.patch
+
+  # Stage new files added by 0001 so 3-way merge can resolve them
+  git add -A
+
+  git apply --3way --whitespace=fix 0002-*.patch
+  git apply --3way --whitespace=fix 0003-*.patch
+  git apply --3way --whitespace=fix 0005-*.patch
 
   ./configure \
       --enable-gpl \

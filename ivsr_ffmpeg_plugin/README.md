@@ -10,6 +10,8 @@ The patches included in `patches` folder are specifically for FFmpeg n7.1.<br>
 To run inference with iVSR SDK, you need to specify `ivsr` as the backend for the `dnn_processing` filter. Here is an example of how to do it: `dnn_processing=dnn_backend=ivsr`. <br>
 Additionally, there are other parameters that you can use. These parameters are listed in the table below:<br>
 
+> **Model dispatch (patch 0005):** Enhanced BasicVSR is the only built-in model (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, and VideoSeal — are configured at runtime via a JSON descriptor file passed with `model_config`. When `model_config` is set, `model_type` is ignored. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.
+
 |AVOption name|Description|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
 |dnn_backend|DNN backend framework name|native|ivsr|
@@ -17,44 +19,86 @@ Additionally, there are other parameters that you can use. These parameters are 
 |input|input name of the model|NULL|input|
 |output|output name of the model|NULL|output|
 |device|device for inference task|CPU|CPU or GPU|
-|model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for one CUSTOM VSR, 4 for TSENet|
-|normalize_factor|factor for normalization|1.0|255.0 for Enhanced EDSR, 1.0 for other models supported in current version|
-|num_streams|number of execution streams for the throughput mode (now valid only for GPU devices).|1|use `benchmark_app` (a tool provided by OpenVINO Toolkit), to get the appropriate value for the best throughput|
-|extension|extension lib file full path, required for loading Enhanced BasicVSR model|
-|op_xml|custom op xml file full path, required for loading Enhanced BasicVSR model|
-|nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR, 1 for other models supported in current version|
-|nireq|number of request|0|use the default setting or set it to match the number of cpu cores|
+|model_type|Built-in model selector. `0` = Enhanced BasicVSR (only remaining built-in). For all other models, omit `model_type` and set `model_config` instead.|0|0 (BasicVSR only)|
+|model_config|Path to a JSON model descriptor file. When set, `model_type` is ignored and all dispatch uses the JSON config. Canonical configs: `model_configs/{videoproc,edsr,custvsr,tsenet,rife,videoseal}_config.json`. See `ivsr_model_config.template.json` for all fields.|NULL|Full path to the appropriate `*_config.json`|
+|normalize_factor|Legacy normalizing factor for models that do not require input normalization to [0, 1]. For JSON-config models this is handled inside the config.|1.0|255.0 for Enhanced EDSR (legacy), 1.0 for all other models|
+|num_streams|number of execution streams for throughput mode (valid only for GPU devices)|1|use `benchmark_app` to determine the best value|
+|extension|extension lib file full path, required for Enhanced BasicVSR|—|—|
+|op_xml|custom op xml file full path, required for Enhanced BasicVSR|—|—|
+|nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR; for JSON-config models this is set inside the config|
+|nireq|number of infer requests|0|leave as default or set to match CPU core count|
 
-Here are some examples of FFmpeg command lines to run inference with the supported models using the `ivsr` backend.<br>
+Here are examples of FFmpeg command lines to run inference with the supported models using the `ivsr` backend.<br>
 
-- Command sample to run Enhanced BasicVSR inference, the input pixel format supported by the model is `rgb24`.
+### Enhanced BasicVSR (built-in, `model_type=0`)
+Input pixel format: `rgb24`. Requires OpenVINO 2022.3 with patches applied.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:device=<CPU or GPU>:extension=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so:op_xml=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml test_out.mp4
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<basic_vsr_model.xml>:input=input:output=output:nif=3:device=<CPU or GPU>:model_type=0:extension=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/bin/intel64/Release/libcustom_extension.so:op_xml=<iVSR project path>/ivsr_ov/based_on_openvino_2022.3/openvino/flow_warp_cl_kernel/flow_warp.xml \
+  test_out.mp4
 ```
-Please note that for the Enhanced BasicVSR model, you need to set the `extension` and `op_xml` options (with `backend_configs`) in the command line. After applying OpenVINO's patches and building OpenVINO, the extension lib file is located in `<OpenVINO folder>/openvino/bin/intel64/Release/libcustom_extension.so`, and the op xml file is located in `<OpenVINO folder>/openvino/flow_warp_cl_kernel/flow_warp.xml`.<br>
+The `extension` and `op_xml` options are required for Enhanced BasicVSR. After applying OpenVINO's patches and building OpenVINO, the extension lib is at `<OpenVINO folder>/openvino/bin/intel64/Release/libcustom_extension.so` and the op xml is at `<OpenVINO folder>/openvino/flow_warp_cl_kernel/flow_warp.xml`.<br>
 
-- Command sample to run SVP models inference. If the supported input pixel format of the model variance is `rgb24`, set the preceeding format as is to avoid unnecessary layout conversion:
+---
+
+> **All models below use the JSON config dispatch path (patch 0005).** Pass the path to the appropriate config file via `model_config`. Canonical configs are in `ivsr_ffmpeg_plugin/model_configs/`.
+
+### SVP / VideoProc
+Input pixel format: `rgb24` (RGB model variant) or `yuv420p` (Y-channel model variant). Config file: `model_configs/videoproc_config.json`.
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:device=<CPU or GPU>:model_type=1 -pix_fmt yuv420p test_out.mp4
+# RGB variant
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/videoproc_config.json \
+  -pix_fmt yuv420p test_out.mp4
+# Y-channel variant
+./ffmpeg -i <your test video> \
+  -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/videoproc_config.json \
+  -pix_fmt yuv420p test_out.mp4
 ```
-If the model variance supports Y-input, set the preceeding format as YUV:
-```
-./ffmpeg -i <your test video> -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<svp_model.xml>:input=input:output=output:nif=1:device=<CPU or GPU>:model_type=1 -pix_fmt yuv420p test_out.mp4
-```
-- Command sample to run Enhanced EDSR inference, the input pixel format supported by the model is `rgb24`.
-```
-cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:nif=1:device=<CPU or GPU>:model_type=2:normalize_factor=255.0 -pix_fmt yuv420p test_out.mp4
-```
-- Command sample to run CUSTOM VSR inference. Note the input pixel format supported by this model is `yuv420p`, and its input shape is `[1, (Y channel)1, H, W]`, output shape is `[1, 1, 2xH, 2xW]`.
-```
-cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<customvsr_model.xml>:input=input:output=output:nif=1:nireq=1:device=CPU:model_type=3 -pix_fmt yuv420p test_out.mp4
-```
-- Command sample to run TSENet model, the input pixel format supported by the model is `rgb24`.
+
+### Enhanced EDSR
+Input pixel format: `rgb24`. Config file: `model_configs/edsr_config.json` (output precision is derived from bit depth automatically).
 ```
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
-./ffmpeg -i <your test video> -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<tsenet_model.xml>:input=input:output=output:nif=1:device=<CPU or GPU>:model_type=4 -pix_fmt yuv420p test_out.mp4
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<edsr_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/edsr_config.json \
+  -pix_fmt yuv420p test_out.mp4
+```
+
+### Custom VSR
+Input pixel format: `yuv420p`. Input shape: `[1, (Y channel)1, H, W]`, output shape: `[1, 1, 2xH, 2xW]`. Config file: `model_configs/custvsr_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=yuv420p,dnn_processing=dnn_backend=ivsr:model=<customvsr_model.xml>:input=input:output=output:nireq=1:device=CPU:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/custvsr_config.json \
+  -pix_fmt yuv420p test_out.mp4
+```
+
+### TSENet
+Input pixel format: `rgb24`. Uses a 3-frame sliding window (`nif=3`) with first-frame duplication priming. Config file: `model_configs/tsenet_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<tsenet_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/tsenet_config.json \
+  -pix_fmt yuv420p test_out.mp4
+```
+
+### RIFE (Frame Interpolation)
+Input pixel format: `rgb24`. Uses a 2-frame sliding window (`nif=2`). Input is normalised to `[0, 1]` (float32); output is scaled back to `[0, 255]`. Config file: `model_configs/rife_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<rife_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/rife_config.json \
+  test_out.mp4
+```
+
+### VideoSeal (Invisible Watermarking)
+Input pixel format: `rgb24`. Single-frame inference; embeds an invisible watermark into each frame. Input is packed as raw `[0, 255]` float32 (no `/255` normalisation). Config file: `model_configs/videoseal_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<videoseal_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/videoseal_config.json \
+  test_out.mp4
 ```
