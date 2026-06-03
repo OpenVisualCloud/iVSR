@@ -26,6 +26,9 @@ Changes included:
   model_type is ignored (removed CUSTOM=-1 sentinel)
 - model_type enum collapsed to BASICVSR=0 + MODEL_TYPE_NUM; only
   BasicVSR remains as a built-in (multi-frame out_queue cannot use JSON)
+- unpack_output_window: Y-plane (1-channel) path for VideoProc/SVP/CustVSR;
+  chroma copy removed from callback — unsafe due to inference_done race;
+  vf_dnn_processing.c copy_uv_planes() handles UV on the main thread instead
 - unpack_output_window: RGB48 (16-bit) output support for HDRTVNet++
 - ivsr_model_config.template.json: copy-and-edit starting point
 - ivsr_model_config.schema.json: JSON Schema draft-07 for IDE validation
@@ -537,6 +540,25 @@ index 0e64c14..563f420 100644
 +    const ModelDesc *md = get_model_desc(m);
 +    const float *src = (const float *)output->data;
 +    int fw = task->out_frame->width, fh = task->out_frame->height;
++
++    /* Single-channel (Y-plane only) model: write Y plane only.
++     * U/V chroma planes are copied by copy_uv_planes() in vf_dnn_processing.c
++     * after ff_dnn_get_result() returns, so no chroma copy is needed here.
++     * Copying chroma from task->in_frame inside this callback is unsafe:
++     * inference_done++ can be reordered before in_frame reads under -O3,
++     * causing a use-after-free race with the main thread freeing in_frame. */
++    if (output->channels == 1) {
++        for (int h = 0; h < fh; h++) {
++            uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++            for (int w = 0; w < fw; w++) {
++                float val = src[h * fw + w];
++                row[w] = (uint8_t)av_clip(
++                    (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
++            }
++        }
++        return;
++    }
++
 +    for (int h = 0; h < fh; h++) {
 +        uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
 +        for (int w = 0; w < fw; w++) {
