@@ -353,7 +353,7 @@ index 0e64c14..563f420 100644
  static int get_datatype_size(DNNDataType dt)
  {
      switch (dt) {
-@@ -264,6 +371,398 @@ static void set_dnndata_info(DNNData *dnn_data, const tensor_desc_t* tensor) {
+@@ -264,6 +371,417 @@ static void set_dnndata_info(DNNData *dnn_data, const tensor_desc_t* tensor) {
      }
  }
  
