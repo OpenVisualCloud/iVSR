@@ -63,7 +63,7 @@ For a detailed introduction to the iVSR SDK API, please refer to [this introduct
 We've also included a `vsr_sample` as a demonstration of its usage.
 
 In order to support the widely-used media processing solution FFmpeg, we've provided an iVSR SDK plugin to simplify integration.<br>
-This plugin is integrated into FFmpeg's `dnn_processing` filter in the [FFmpeg documentation](https://ffmpeg.org/ffmpeg-filters.html#dnn_005fprocessing-1) in the libavfilter library, serving as a new `ivsr` backend to this filter. Please note that the patches provided in this project are specifically for FFmpeg n7.1.<br>
+This plugin is integrated into FFmpeg's `dnn_processing` filter in the [FFmpeg documentation](https://ffmpeg.org/ffmpeg-filters.html#dnn_005fprocessing-1) in the libavfilter library, serving as a new `ivsr` backend to this filter. The patches provided in this project target **FFmpeg n8.1**.<br>
 
 As of patch 0005, a **JSON config dispatch system** is included. Enhanced BasicVSR is the only built-in model type (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, and VideoSeal — are configured at runtime by passing a JSON descriptor file via the `model_config` AVOption. This means new models can be supported without C code changes or recompilation. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.<br>
 
@@ -160,7 +160,7 @@ The software was validated on:
 - Host OS: Linux-based OS (Ubuntu 22.04 or Rocky Linux 9.3)
 - Docker-based OS: Ubuntu 22.04 or Rocky Linux 9.3
 - OpenVINO: [2022.3](https://github.com/openvinotoolkit/openvino/tree/2022.3.0), [2023.2](https://github.com/openvinotoolkit/openvino/tree/2023.2.0), or [2024.5](https://github.com/openvinotoolkit/openvino/tree/2024.5.0)
-- FFmpeg: [n7.1](https://github.com/FFmpeg/FFmpeg/tree/n7.1)
+- FFmpeg: [n8.1](https://github.com/FFmpeg/FFmpeg/tree/n8.1)
 
 Building iVSR requires the installation of the GPU driver (optional), OpenCV, OpenVINO, and FFmpeg.  
 We provide **three** ways to install requirements and build iVSR SDK & iVSR FFmpeg plugin:<br>

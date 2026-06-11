@@ -13,7 +13,9 @@
 
 #include <cassert>
 #include <cstring>
+#ifdef ENABLE_IRGUARD
 #include <irguard.hpp>
+#endif
 
 #include "omp.h"
 #include "utils.hpp"
@@ -78,7 +80,11 @@ IVSRStatus ov_engine::init_impl() {
     try {
         model = instance_.read_model(model_path_);
     } catch (const std::exception& e) {
+#ifdef ENABLE_IRGUARD
         model = irguard::load_model(instance_, model_path_);
+#else
+        throw;
+#endif
     }
 
     bool multiple_inputs = false;

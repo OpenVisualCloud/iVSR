@@ -1,6 +1,6 @@
 # iVSR FFmpeg plugin - iVSR SDK based
 The folder `ivsr_ffmpeg_plugin` enables model inference using FFmpeg with iVSR SDK as backend. It provides additional `ivsr` backend for the DNN interface called by the `dnn_processing` filter.<br>
-The patches included in `patches` folder are specifically for FFmpeg n7.1.<br>
+The patches included in `patches` folder are specifically for FFmpeg n8.1.<br>
 
 <div align=center>
 <img src="./figs/ffmpeg_ivsr_sdk_backend.png" width = 80% height = 80% />
