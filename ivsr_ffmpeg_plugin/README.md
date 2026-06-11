@@ -1,6 +1,6 @@
 # iVSR FFmpeg plugin - iVSR SDK based
 The folder `ivsr_ffmpeg_plugin` enables model inference using FFmpeg with iVSR SDK as backend. It provides additional `ivsr` backend for the DNN interface called by the `dnn_processing` filter.<br>
-The patches included in `patches` folder are specifically for FFmpeg n7.1.<br>
+The patches included in `patches` folder are specifically for FFmpeg n8.1.<br>
 
 <div align=center>
 <img src="./figs/ffmpeg_ivsr_sdk_backend.png" width = 80% height = 80% />
@@ -18,12 +18,12 @@ Additionally, there are other parameters that you can use. These parameters are 
 |output|output name of the model|NULL|output|
 |device|device for inference task|CPU|CPU or GPU|
 |model_type|type for models|0|0 for Enhanced BasicVSR, 1 for SVP models, 2 for Enhanced EDSR, 3 for one CUSTOM VSR, 4 for TSENet|
-|normalize_factor|factor for normalization|1.0|255.0 for Enhanced EDSR, 1.0 for other models supported in current version|
-|num_streams|number of execution streams for the throughput mode (now valid only for GPU devices).|1|use `benchmark_app` (a tool provided by OpenVINO Toolkit), to get the appropriate value for the best throughput|
-|extension|extension lib file full path, required for loading Enhanced BasicVSR model|
-|op_xml|custom op xml file full path, required for loading Enhanced BasicVSR model|
-|nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR, 1 for other models supported in current version|
-|nireq|number of request|0|use the default setting or set it to match the number of cpu cores|
+|normalize_factor|normalizing factor for models that do not require input normalization to [0, 1]|1.0|255.0 for Enhanced EDSR, 1.0 for all other models|
+|num_streams|number of execution streams for throughput mode (valid only for GPU devices)|1|use `benchmark_app` to determine the best value|
+|extension|extension lib file full path, required for Enhanced BasicVSR|—|—|
+|op_xml|custom op xml file full path, required for Enhanced BasicVSR|—|—|
+|nif|number of input frames in batch sent to the DNN backend|1|3 for Enhanced BasicVSR, 1 for other models|
+|nireq|number of infer requests|0|leave as default or set to match CPU core count|
 
 Here are some examples of FFmpeg command lines to run inference with the supported models using the `ivsr` backend.<br>
 

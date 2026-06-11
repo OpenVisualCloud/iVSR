@@ -1,0 +1,213 @@
+diff --git a/configure b/configure
+index 1759694..4b15289 100755
+--- a/configure
++++ b/configure
+@@ -262,6 +262,8 @@ External library support:
+   --enable-libopencolorio  enable color management via OpenColorIO [no]
+   --enable-libopenvino     enable OpenVINO as a DNN module backend
+                            for DNN based filters like dnn_processing [no]
++  --enable-libivsr         enable iVSR SDK as a DNN module backend
++                           for DNN based Super Resolution filters [no]
+   --enable-libopus         enable Opus de/encoding via libopus [no]
+   --enable-libplacebo      enable libplacebo library [no]
+   --enable-libpulse        enable Pulseaudio input via libpulse [no]
+@@ -2070,6 +2072,7 @@ EXTERNAL_LIBRARY_LIST="
+     libopenjpeg
+     libopenmpt
+     libopenvino
++    libivsr
+     libopus
+     libplacebo
+     libpulse
+@@ -3026,7 +3029,7 @@ dirac_parse_select="golomb"
+ dovi_rpudec_select="golomb"
+ dovi_rpuenc_select="golomb"
+ dnn_deps="avformat swscale"
+-dnn_deps_any="libtensorflow libopenvino libtorch"
++dnn_deps_any="libtensorflow libopenvino libtorch libivsr"
+ error_resilience_select="me_cmp"
+ evcparse_select="golomb"
+ faandct_deps="faan"
+@@ -7347,6 +7350,7 @@ enabled libopenmpt        && require_pkg_config libopenmpt "libopenmpt >= 0.2.65
+ enabled libopenvino       && { { check_pkg_config libopenvino openvino openvino/c/openvino.h ov_core_create && enable openvino2; } ||
+                                 { check_pkg_config libopenvino openvino c_api/ie_c_api.h ie_c_api_version ||
+                                   require libopenvino c_api/ie_c_api.h ie_c_api_version -linference_engine_c_api; } }
++enabled libivsr           && require libivsr ivsr.h ivsr_init -livsr
+ enabled libopus           && {
+     enabled libopus_decoder && {
+         require_pkg_config libopus opus opus_multistream.h opus_multistream_decoder_create
+diff --git a/libavfilter/dnn/dnn_interface.c b/libavfilter/dnn/dnn_interface.c
+index 7080ab1..6d47920 100644
+--- a/libavfilter/dnn/dnn_interface.c
++++ b/libavfilter/dnn/dnn_interface.c
+@@ -33,6 +33,7 @@
+ extern const DNNModule ff_dnn_backend_openvino;
+ extern const DNNModule ff_dnn_backend_tf;
+ extern const DNNModule ff_dnn_backend_torch;
++extern const DNNModule ff_dnn_backend_ivsr;
+ 
+ #define OFFSET(x) offsetof(DnnContext, x)
+ #define FLAGS AV_OPT_FLAG_FILTERING_PARAM
+@@ -78,6 +79,9 @@ static const DnnBackendInfo dnn_backend_info_list[] = {
+ #if CONFIG_LIBTORCH
+         {offsetof(DnnContext, torch_option), .module = &ff_dnn_backend_torch},
+ #endif
++#if CONFIG_LIBIVSR
++        {offsetof(DnnContext, ivsr_option), .module = &ff_dnn_backend_ivsr},
++#endif
+ };
+ 
+ const DNNModule *ff_get_dnn_module(DNNBackendType backend_type, void *log_ctx)
+@@ -103,6 +107,14 @@ void ff_dnn_init_child_class(DnnContext *ctx)
+     }
+ }
+ 
++void ff_dnn_uninit_child_class(DnnContext *ctx)
++{
++    for (int i = 0; i < FF_ARRAY_ELEMS(dnn_backend_info_list); i++) {
++        const AVClass **ptr = (const AVClass **) ((char *) ctx + dnn_backend_info_list[i].offset);
++        av_opt_free(ptr);
++    }
++}
++
+ void *ff_dnn_child_next(DnnContext *obj, void *prev) {
+     size_t pre_offset;
+ 
+diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
+index f612f88..d61f7c8 100644
+--- a/libswscale/swscale_unscaled.c
++++ b/libswscale/swscale_unscaled.c
+@@ -2121,6 +2121,106 @@ static int float_y_to_uint_y_wrapper(SwsInternal *c,
+     return srcSliceH;
+ }
+ 
++static int uint16_y_to_float_y_wrapper(SwsInternal *c,
++                                       const uint8_t *const src[],
++                                       const int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t *const dst[],
++                                       const int dstStride[])
++{
++    int y, x;
++    const ptrdiff_t srcStrideUint16 = srcStride[0] >> 1;
++    const ptrdiff_t dstStrideFloat = dstStride[0] >> 2;
++    const uint16_t *srcPtr = (const uint16_t *)(src[0] + srcStride[0] * srcSliceY);
++    float *dstPtr = (float *)(dst[0] + dstStride[0] * srcSliceY);
++    const float float_norm_factor = 1.0f / 65535.0f;
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->opts.src_w; ++x) {
++            dstPtr[x] = (float)srcPtr[x] * float_norm_factor;
++        }
++        srcPtr += srcStrideUint16;
++        dstPtr += dstStrideFloat;
++    }
++
++    return srcSliceH;
++}
++
++static int float_y_to_uint16_y_wrapper(SwsInternal *c,
++                                       const uint8_t *const src[],
++                                       const int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t *const dst[],
++                                       const int dstStride[])
++{
++    int y, x;
++    const ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const ptrdiff_t dstStrideUint16 = dstStride[0] >> 1;
++    const float *srcPtr = (const float *)(src[0] + srcStride[0] * srcSliceY);
++    uint16_t *dstPtr = (uint16_t *)(dst[0] + dstStride[0] * srcSliceY);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->opts.src_w; ++x) {
++            dstPtr[x] = av_clip_uint16(lrintf(65535.0f * srcPtr[x]));
++        }
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStrideUint16;
++    }
++
++    return srcSliceH;
++}
++
++static int uint10_y_to_float_y_wrapper(SwsInternal *c,
++                                       const uint8_t *const src[],
++                                       const int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t *const dst[],
++                                       const int dstStride[])
++{
++    int y, x;
++    const ptrdiff_t srcStrideUint16 = srcStride[0] >> 1;
++    const ptrdiff_t dstStrideFloat = dstStride[0] >> 2;
++    const uint16_t *srcPtr = (const uint16_t *)(src[0] + srcStride[0] * srcSliceY);
++    float *dstPtr = (float *)(dst[0] + dstStride[0] * srcSliceY);
++    const float float_norm_factor = 1.0f / 1023.0f;
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->opts.src_w; ++x) {
++            dstPtr[x] = (float)srcPtr[x] * float_norm_factor;
++        }
++        srcPtr += srcStrideUint16;
++        dstPtr += dstStrideFloat;
++    }
++
++    return srcSliceH;
++}
++
++static int float_y_to_uint10_y_wrapper(SwsInternal *c,
++                                       const uint8_t *const src[],
++                                       const int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t *const dst[],
++                                       const int dstStride[])
++{
++    int y, x;
++    const ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const ptrdiff_t dstStrideUint16 = dstStride[0] >> 1;
++    const float *srcPtr = (const float *)(src[0] + srcStride[0] * srcSliceY);
++    uint16_t *dstPtr = (uint16_t *)(dst[0] + dstStride[0] * srcSliceY);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x < c->opts.src_w; ++x) {
++            int value = lrintf(1023.0f * srcPtr[x]);
++            if (value < 0) {
++                value = 0;
++            } else if (value > 1023) {
++                value = 1023;
++            }
++            dstPtr[x] = (uint16_t)value;
++        }
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStrideUint16;
++    }
++
++    return srcSliceH;
++}
++
+ /* unscaled copy like stuff (assumes nearly identical formats) */
+ static int packedCopyWrapper(SwsInternal *c, const uint8_t *const src[],
+                              const int srcStride[], int srcSliceY, int srcSliceH,
+@@ -2631,6 +2731,26 @@ void ff_get_unscaled_swscale(SwsInternal *c)
+         c->convert_unscaled = float_y_to_uint_y_wrapper;
+     }
+ 
++    /* 16bit Y to float Y */
++    if (srcFormat == AV_PIX_FMT_GRAY16 && dstFormat == AV_PIX_FMT_GRAYF32){
++        c->convert_unscaled = uint16_y_to_float_y_wrapper;
++    }
++
++    /* float Y to 16bit Y */
++    if (srcFormat == AV_PIX_FMT_GRAYF32 && dstFormat == AV_PIX_FMT_GRAY16){
++        c->convert_unscaled = float_y_to_uint16_y_wrapper;
++    }
++
++    /* 10bit Y to float Y */
++    if (srcFormat == AV_PIX_FMT_GRAY10 && dstFormat == AV_PIX_FMT_GRAYF32){
++        c->convert_unscaled = uint10_y_to_float_y_wrapper;
++    }
++
++    /* float Y to 10bit Y */
++    if (srcFormat == AV_PIX_FMT_GRAYF32 && dstFormat == AV_PIX_FMT_GRAY10){
++        c->convert_unscaled = float_y_to_uint10_y_wrapper;
++    }
++
+     /* LQ converters if -sws 0 or -sws 4*/
+     if (c->opts.flags&(SWS_FAST_BILINEAR|SWS_POINT)) {
+         /* yv12_to_yuy2 */

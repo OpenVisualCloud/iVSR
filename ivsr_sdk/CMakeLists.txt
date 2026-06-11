@@ -15,6 +15,8 @@ SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
 
 set(SDK_PRIVATE_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/privates/include)
 
+option(ENABLE_IRGUARD "Enable irguard model protection (requires prebuilt libirguard.a)" OFF)
+
 add_subdirectory(src)
 add_subdirectory(privates)
 
