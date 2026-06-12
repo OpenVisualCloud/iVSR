@@ -1,0 +1,95 @@
+]633;E;cat <<'HEADER'\x0aFrom Mon Sep 17 00:00:00 2001\x0aFrom: iVSR <ivsr@intel.com>\x0aDate: Thu, 12 Jun 2026 00:00:00 +0000\x0aSubject: [PATCH 0006] Fix safe defaults and correctness bugs in JSON config\x0a dispatch\x0a\x0aFour correctness fixes on top of patch 0005:\x0a\x0a1. Fix row-stride bug in unpack_output_window Y-plane path.\x0a   src[h * fw + w] used the unpadded frame width as the tensor row stride.\x0a   When align > 0 (e.g. VideoProc align=64) the tensor width is padded to a\x0a   multiple of align, so the stride must be output->width, not fw.\x0a   Corrupts output for frames whose width is not a multiple of align.\x0a\x0a2. Fix normalize_input default: 1 -> 0.\x0a   5 out of 7 shipped models need false (raw [0,255] I/O). The old default\x0a   of true silently corrupted output for VideoSeal, EDSR, VideoProc, and\x0a   CustVSR when the field was omitted from a JSON config.\x0a\x0a3. Fix normalize_output default: 1 -> 0.\x0a   Same rationale. Only RIFE, SPAN, and TSENet need normalize_output: true.\x0a\x0a4. Fix model_color default and reorder color-format dispatch.\x0a   When model_color is absent in the JSON and color_format_auto is 0, the\x0a   SDK received an empty string causing undefined behaviour. Now falls back\x0a   to "RGB" via a ternary in the else branch — no heap allocation, no leak.\x0a   Reorders the if/else chain so color_format_auto is checked first.\x0a\x0aAlso adds out_layout inheritance: when out_layout is absent from the JSON\x0ait is defaulted to in_layout. Models whose output layout differs from their\x0ainput layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.\x0a---\x0a libavfilter/dnn/dnn_backend_ivsr.c | 18 +++++++++++-------\x0a 1 file changed, 11 insertions(+), 7 deletions(-)\x0a\x0adiff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c\x0aHEADER\x0a;5f5a4624-09fd-42d5-95d4-06239d7a3549]633;CFrom Mon Sep 17 00:00:00 2001
+From: iVSR <ivsr@intel.com>
+Date: Thu, 12 Jun 2026 00:00:00 +0000
+Subject: [PATCH 0006] Fix safe defaults and correctness bugs in JSON config
+ dispatch
+
+Four correctness fixes on top of patch 0005:
+
+1. Fix row-stride bug in unpack_output_window Y-plane path.
+   src[h * fw + w] used the unpadded frame width as the tensor row stride.
+   When align > 0 (e.g. VideoProc align=64) the tensor width is padded to a
+   multiple of align, so the stride must be output->width, not fw.
+   Corrupts output for frames whose width is not a multiple of align.
+
+2. Fix normalize_input default: 1 -> 0.
+   5 out of 7 shipped models need false (raw [0,255] I/O). The old default
+   of true silently corrupted output for VideoSeal, EDSR, VideoProc, and
+   CustVSR when the field was omitted from a JSON config.
+
+3. Fix normalize_output default: 1 -> 0.
+   Same rationale. Only RIFE, SPAN, and TSENet need normalize_output: true.
+
+4. Fix model_color default and reorder color-format dispatch.
+   When model_color is absent in the JSON and color_format_auto is 0, the
+   SDK received an empty string causing undefined behaviour. Now falls back
+   to "RGB" via a ternary in the else branch — no heap allocation, no leak.
+   Reorders the if/else chain so color_format_auto is checked first.
+
+Also adds out_layout inheritance: when out_layout is absent from the JSON
+it is defaulted to in_layout. Models whose output layout differs from their
+input layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 18 +++++++++++-------
+ 1 file changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -565,7 +565,7 @@
+         for (int h = 0; h < fh; h++) {
+             uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
+             for (int w = 0; w < fw; w++) {
+-                float val = src[h * fw + w];
++                float val = src[h * output->width + w];
+                 row[w] = (uint8_t)av_clip(
+                     (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
+             }
+@@ -657,8 +657,8 @@
+     desc->unpack_output     = unpack_output_window;
+     desc->nif_override      = 1;
+     desc->channel_divisor   = 1;
+-    desc->normalize_input   = 1;
+-    desc->normalize_output  = 1;
++    desc->normalize_input   = 0;  /* most models use raw [0,255]; set true only for RIFE/SPAN */
++    desc->normalize_output  = 0;  /* most models output raw [0,255]; set true only for RIFE/SPAN/TSENet */
+     desc->window_type       = WINDOW_SINGLE;
+     desc->out_order         = DCO_RGB;
+ 
+@@ -772,6 +772,9 @@
+         free_dynamic_desc(&desc);
+         return AVERROR(EINVAL);
+     }
++    /* Default out_layout to in_layout when absent (most models share the same layout). */
++    if (!desc->out_layout)
++        desc->out_layout = av_strdup(desc->in_layout);
+ 
+     *out_desc = desc;
+     return 0;
+@@ -1362,18 +1365,20 @@
+     default:
+         break;
+     }
+-    /* Set model colour format from descriptor. Use color_format_auto for NULL entries. */
++    /* Set model colour format: color_format_auto takes priority; absent model_color defaults to "RGB". */
+     {
+         const ModelDesc *md = get_model_desc(ivsr_model);
+-        if (md->model_color) {
+-            strcpy(input_tensor_desc_set.model_color_format, md->model_color);
+-        } else if (md->color_format_auto == 1) {
++        if (md->color_format_auto == 1) {
+             /* VideoProc-style: auto-detect from pixel format */
+             strcpy(input_tensor_desc_set.model_color_format,
+                    (desc->flags & AV_PIX_FMT_FLAG_RGB) ? "RGB" : "I420_Three_Planes");
+         } else if (md->color_format_auto == 2) {
+             /* CustVSR-style: always YUV */
+             strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
++        } else {
++            /* Use explicit model_color or fall back to "RGB" for standard RGB models. */
++            strcpy(input_tensor_desc_set.model_color_format,
++                   md->model_color ? md->model_color : "RGB");
+         }
+     }
+     config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
+-- 
+2.25.1

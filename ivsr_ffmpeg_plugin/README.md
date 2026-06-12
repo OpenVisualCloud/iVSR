@@ -10,9 +10,9 @@ The patches included in `patches` folder are specifically for FFmpeg n8.1.<br>
 To run inference with iVSR SDK, you need to specify `ivsr` as the backend for the `dnn_processing` filter. Here is an example of how to do it: `dnn_processing=dnn_backend=ivsr`. <br>
 Additionally, there are other parameters that you can use. These parameters are listed in the table below:<br>
 
-> **Model dispatch (patch 0005):** Enhanced BasicVSR is the only built-in model (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, SPAN, and VideoSeal — are configured at runtime via a JSON descriptor file passed with `model_config`. When `model_config` is set, `model_type` is ignored. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.
+> **Model dispatch (patch 0005):** Enhanced BasicVSR is the only built-in model (`model_type=0`). All other models — SVP/VideoProc, Enhanced EDSR, Custom VSR, TSENet, RIFE, SPAN, VideoSeal, and HDRTVNet-LE — are configured at runtime via a JSON descriptor file passed with `model_config`. When `model_config` is set, `model_type` is ignored. Canonical config files are provided in `ivsr_ffmpeg_plugin/model_configs/`.
 
-> **OpenVINO version:** Enhanced BasicVSR requires OpenVINO **2022.3** with custom patches. All JSON-config models (SVP, EDSR, CustVSR, TSENet, RIFE, SPAN, VideoSeal) require OpenVINO **2026.1** (installed via apt). The `build.sh` script in the project root defaults to OV 2026.1.
+> **OpenVINO version:** Enhanced BasicVSR requires OpenVINO **2022.3** with custom patches. All JSON-config models (SVP, EDSR, CustVSR, TSENet, RIFE, SPAN, VideoSeal, HDRTVNet-LE) require OpenVINO **2026.1** (installed via apt). The `build.sh` script in the project root defaults to OV 2026.1.
 
 |AVOption name|Description|Default value|Recommended value(s)|
 |:--|:--|:--|:--|
@@ -22,7 +22,7 @@ Additionally, there are other parameters that you can use. These parameters are 
 |output|output name of the model|NULL|output|
 |device|device for inference task|CPU|CPU or GPU|
 |model_type|Built-in model selector. `0` = Enhanced BasicVSR (only remaining built-in). For all other models, omit `model_type` and set `model_config` instead.|0|0 (BasicVSR only)|
-|model_config|Path to a JSON model descriptor file. When set, `model_type` is ignored and all dispatch uses the JSON config. Canonical configs: `model_configs/{videoproc,edsr,custvsr,tsenet,rife,span,videoseal}_config.json`. See `ivsr_model_config.template.json` for all fields.|NULL|Full path to the appropriate `*_config.json`|
+|model_config|Path to a JSON model descriptor file. When set, `model_type` is ignored and all dispatch uses the JSON config. Canonical configs: `model_configs/{videoproc,edsr,custvsr,tsenet,rife,span,videoseal,hdrtvnet_le}_config.json`. See `ivsr_model_config.template.json` for all fields.|NULL|Full path to the appropriate `*_config.json`|
 |normalize_factor|Legacy normalizing factor for models that do not require input normalization to [0, 1]. For JSON-config models this is handled inside the config.|1.0|255.0 for Enhanced EDSR (legacy), 1.0 for all other models|
 |num_streams|number of execution streams for throughput mode (valid only for GPU devices)|1|use `benchmark_app` to determine the best value|
 |extension|extension lib file full path, required for Enhanced BasicVSR|—|—|
@@ -111,5 +111,14 @@ Input pixel format: `rgb24`. Single-frame inference; embeds an invisible waterma
 cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
 ./ffmpeg -i <your test video> \
   -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<videoseal_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/videoseal_config.json \
+  test_out.mp4
+```
+
+### HDRTVNet++ LE (Local Enhancement, Path A)
+Input pixel format: `rgb24`. Single-frame HDR local-enhancement model. Input and output are raw `[0, 255]` float32 (`normalize_input: false`, `normalize_output: false`). Output bit depth tracks the source: u16 is used automatically for 10-bit HDR input (`out_precision_depth_derived: true`). Config file: `model_configs/hdrtvnet_le_config.json`.
+```
+cd <iVSR project path>/ivsr_ffmpeg_plugin/ffmpeg
+./ffmpeg -i <your test video> \
+  -vf format=rgb24,dnn_processing=dnn_backend=ivsr:model=<hdrtvnet_le_model.xml>:input=input:output=output:device=<CPU or GPU>:model_config=<iVSR project path>/ivsr_ffmpeg_plugin/model_configs/hdrtvnet_le_config.json \
   test_out.mp4
 ```

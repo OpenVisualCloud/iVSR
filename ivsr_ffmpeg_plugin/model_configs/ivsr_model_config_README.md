@@ -73,11 +73,8 @@ Element type of the input tensor sent to the iVSR SDK.
 Memory layout of the output tensor.  
 **Type:** string  
 **Supported values:** `"NCHW"`, `"NHWC"`, `"NFHWC"`  
-**Default (if absent):** `"NHWC"` (hard-coded C initializer)  
-**⚠️ Must be set explicitly for NCHW output models.** Most models use `"NCHW"` output; only VideoProc and TSENet use `"NHWC"`. Do not omit this field unless the model truly outputs NHWC.
-
-> **TODO:** Change the C default for `out_layout` from `"NHWC"` to match `in_layout` when absent.
-> After that fix, models whose output layout matches their input layout (the majority) can safely omit this field.
+**Default (if absent):** `"NHWC"` — or, for JSON-config models, inherited from `in_layout` when `out_layout` is absent.
+**NOTE: Must be set explicitly when the model output layout differs from its input layout.** For example, TSENet has `in_layout=NCHW` but `out_layout=NHWC` and must declare both.
 
 ---
 
@@ -108,10 +105,7 @@ Colour space string sent to the iVSR SDK to describe the input tensor's colour f
 | `"RGB"` | Model expects interleaved RGB planes |
 | `"I420_Three_Planes"` | Model expects YUV 4:2:0 three-plane layout |
 
-**Default (if absent):** no colour format is written to the SDK — **this causes undefined behaviour** if `color_format_auto` is also `0` (the default). Always set either `model_color` or `color_format_auto`.
-
-> **TODO:** Change the C default so that when `model_color` is absent and `color_format_auto` is `0`, the SDK receives `"RGB"` automatically.
-> After that fix, all standard RGB models can omit this field.
+**Default (if absent):** no colour format is written to the SDK if `color_format_auto` is also `0` — in that case the parser default of `"RGB"` is used. Always set either `model_color` or `color_format_auto` when a non-RGB format is needed.
 
 ---
 
@@ -150,12 +144,8 @@ When `true`, the first frame is duplicated to prime the sliding window so infere
 When `true`, uint8 pixel values [0, 255] are divided by 255 before being packed into the float32 input tensor, producing a [0.0, 1.0] range.  
 When `false`, raw pixel values are packed as-is into float32.  
 **Type:** boolean  
-**Default (if absent):** `true` (**⚠️ unsafe default**)
-
-> **TODO:** Change the C default for `normalize_input` from `true` to `false`.
-> Rationale: 5 out of 7 shipped models need `false`. The current default silently corrupts output
-> for VideoSeal, EDSR, VideoProc, and CustVSR if this field is accidentally omitted.
-> After the fix, only RIFE and SPAN need to explicitly set `"normalize_input": true`.
+**Default (if absent):** `false`  
+**When to set:** `true` for RIFE and SPAN (normalised [0,1] float input). All other shipped models use raw [0,255] and can omit this field.
 
 ---
 
@@ -163,10 +153,8 @@ When `false`, raw pixel values are packed as-is into float32.
 When `true`, float32 output values are multiplied by 255 and clipped to [0, 255] before being written into the output frame.  
 When `false`, float32 values are rounded and clipped directly.  
 **Type:** boolean  
-**Default (if absent):** `true` (**⚠️ unsafe default** — same reason as `normalize_input`)
-
-> **TODO:** Change the C default for `normalize_output` from `true` to `false`.
-> After the fix, only RIFE, SPAN, and TSENet need to explicitly set `"normalize_output": true`.
+**Default (if absent):** `false`  
+**When to set:** `true` for RIFE, SPAN, and TSENet (model outputs [0,1] float that must be scaled back to [0,255]). All other shipped models output raw [0,255] and can omit this field.
 
 ---
 
@@ -222,20 +210,20 @@ Takes priority over `model_color` being set when the value is non-zero.
 
 | Parameter | C default | Safe to omit today? |
 |---|---|---|
-| `name` | — | ❌ required |
-| `in_layout` | — | ❌ required |
-| `nif` | `1` | ✅ for single-frame models |
-| `channel_divisor` | `1` | ✅ when no channel stacking |
-| `align` | `0` | ✅ when no alignment needed |
-| `in_precision` | depth-derived | ✅ when depth-derived is correct |
-| `out_layout` | `"NHWC"` | ⚠️ only safe for NHWC output models; NCHW models must set it |
-| `out_precision` | `"fp32"` | ✅ for all currently shipped models |
-| `model_color` | empty string | ⚠️ unsafe — must set either this or `color_format_auto` |
-| `out_order` | `"RGB"` | ✅ except `"NONE"` for luma-only models |
-| `window_type` | `"single"` | ✅ for single-frame models |
-| `window_init_dup` | `false` | ✅ when false |
-| `normalize_input` | `true` | ⚠️ unsafe — most models need `false` |
-| `normalize_output` | `true` | ⚠️ unsafe — most models need `false` |
-| `output_passthrough_dims` | `false` | ✅ when false |
-| `out_precision_depth_derived` | `false` | ✅ always for current models |
-| `color_format_auto` | `0` | ✅ when using `model_color` |
+| `name` | — | required |
+| `in_layout` | — | required |
+| `nif` | `1` | yes, for single-frame models |
+| `channel_divisor` | `1` | yes, when no channel stacking |
+| `align` | `0` | yes, when no alignment needed |
+| `in_precision` | depth-derived | yes, when depth-derived is correct |
+| `out_layout` | `in_layout` (inherited) | yes, when output layout matches input layout; must set when layouts differ (e.g. TSENet: in=NCHW, out=NHWC) |
+| `out_precision` | `"fp32"` | yes, for all currently shipped models |
+| `model_color` | `"RGB"` | yes, for all standard RGB models |
+| `out_order` | `"RGB"` | yes, except `"NONE"` for luma-only models |
+| `window_type` | `"single"` | yes, for single-frame models |
+| `window_init_dup` | `false` | yes, when false |
+| `normalize_input` | `false` | yes, for most models; set `true` only for RIFE, SPAN |
+| `normalize_output` | `false` | yes, for most models; set `true` only for RIFE, SPAN, TSENet |
+| `output_passthrough_dims` | `false` | yes, when false |
+| `out_precision_depth_derived` | `false` | yes, always for current models |
+| `color_format_auto` | `0` | yes, when using `model_color` |

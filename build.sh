@@ -161,6 +161,7 @@ build_ffmpeg() {
   git apply --3way --whitespace=fix 0002-*.patch
   git apply --3way --whitespace=fix 0003-*.patch
   git apply --3way --whitespace=fix 0005-*.patch
+  git apply --3way --whitespace=fix 0006-*.patch
 
   ./configure \
       --enable-gpl \
@@ -189,7 +190,7 @@ install_openvino_from_apt() {
     echo "ERROR: Failed to download Intel GPG key from ${key_url}" >&2
     exit 1
   fi
-  sudo gpg --output "${keyring}" --dearmor /tmp/intel-sw-products.pub
+  sudo gpg --yes --output "${keyring}" --dearmor /tmp/intel-sw-products.pub
   rm -f /tmp/intel-sw-products.pub
 
   if [ ! -s "${keyring}" ]; then
