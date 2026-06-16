@@ -1,0 +1,194 @@
+From 3944b32517b8401e6d5671ab49c560c86762a71a Mon Sep 17 00:00:00 2001
+From: Amir Naghdinezhad <amir.naghdinezhad@intel.com>
+Date: Tue, 16 Jun 2026 16:28:23 -0700
+Subject: [PATCH] Optimize float_y_to_uint_y_wrapper
+
+---
+ libswscale/swscale_unscaled.c | 157 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 154 insertions(+), 3 deletions(-)
+
+diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
+index 75b0f6c..b420d43 100644
+--- a/libswscale/swscale_unscaled.c
++++ b/libswscale/swscale_unscaled.c
+@@ -34,6 +34,13 @@
+ #include "libavutil/pixdesc.h"
+ #include "libavutil/avassert.h"
+ #include "libavutil/avconfig.h"
++#include "libavutil/cpu.h"
++
++#if HAVE_AVX2 && (ARCH_X86 || ARCH_X86_64)
++#include <immintrin.h>
++#elif HAVE_SSE2 && (ARCH_X86 || ARCH_X86_64)
++#include <emmintrin.h>
++#endif
+ 
+ DECLARE_ALIGNED(8, static const uint8_t, dithers)[8][8][8]={
+ {
+@@ -1732,9 +1739,9 @@ static int uint_y_to_float_y_wrapper(SwsContext *c, const uint8_t *src[],
+     return srcSliceH;
+ }
+ 
+-static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
+-                                     int srcStride[], int srcSliceY,
+-                                     int srcSliceH, uint8_t* dst[], int dstStride[])
++static int float_y_to_uint_y_wrapper_org(SwsContext *c, const uint8_t* src[],
++                                         int srcStride[], int srcSliceY,
++                                         int srcSliceH, uint8_t* dst[], int dstStride[])
+ {
+     int y, x;
+     ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
+@@ -1752,6 +1759,150 @@ static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
+     return srcSliceH;
+ }
+ 
++#if HAVE_SSE2
++static int float_y_to_uint_y_wrapper_sse2(SwsContext *c, const uint8_t* src[],
++                                          int srcStride[], int srcSliceY,
++                                          int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    int y, x;
++    const int width = c->srcW;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const float *srcPtr = (const float *)src[0];
++    uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
++    const __m128 scale = _mm_set1_ps(255.0f);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x <= width - 16; x += 16) {
++            __m128i i0 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x + 0),  scale));
++            __m128i i1 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x + 4),  scale));
++            __m128i i2 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x + 8),  scale));
++            __m128i i3 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x + 12), scale));
++            __m128i p01 = _mm_packs_epi32(i0, i1);
++            __m128i p23 = _mm_packs_epi32(i2, i3);
++            __m128i u8 = _mm_packus_epi16(p01, p23);
++            _mm_storeu_si128((__m128i *)(dstPtr + x), u8);
++        }
++
++        for (; x < width; ++x)
++            dstPtr[x] = av_clip_uint8(lrintf(255.0f * srcPtr[x]));
++
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStride[0];
++    }
++
++    return srcSliceH;
++}
++#endif
++
++#if HAVE_AVX2 && (ARCH_X86 || ARCH_X86_64) && (defined(__GNUC__) || defined(__clang__))
++__attribute__((target("avx2")))
++static int float_y_to_uint_y_wrapper_avx2(SwsContext *c, const uint8_t* src[],
++                                          int srcStride[], int srcSliceY,
++                                          int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    int y, x;
++    const int width = c->srcW;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const float *srcPtr = (const float *)src[0];
++    uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
++    const __m256 scale = _mm256_set1_ps(255.0f);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x <= width - 32; x += 32) {
++            __m256i i0 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 0),  scale));
++            __m256i i1 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 8),  scale));
++            __m256i i2 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 16), scale));
++            __m256i i3 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 24), scale));
++
++            __m128i i0_lo = _mm256_castsi256_si128(i0);
++            __m128i i0_hi = _mm256_extracti128_si256(i0, 1);
++            __m128i i1_lo = _mm256_castsi256_si128(i1);
++            __m128i i1_hi = _mm256_extracti128_si256(i1, 1);
++            __m128i i2_lo = _mm256_castsi256_si128(i2);
++            __m128i i2_hi = _mm256_extracti128_si256(i2, 1);
++            __m128i i3_lo = _mm256_castsi256_si128(i3);
++            __m128i i3_hi = _mm256_extracti128_si256(i3, 1);
++
++            __m128i p0 = _mm_packs_epi32(i0_lo, i0_hi);
++            __m128i p1 = _mm_packs_epi32(i1_lo, i1_hi);
++            __m128i p2 = _mm_packs_epi32(i2_lo, i2_hi);
++            __m128i p3 = _mm_packs_epi32(i3_lo, i3_hi);
++
++            __m128i u01 = _mm_packus_epi16(p0, p1);
++            __m128i u23 = _mm_packus_epi16(p2, p3);
++
++            _mm_storeu_si128((__m128i *)(dstPtr + x), u01);
++            _mm_storeu_si128((__m128i *)(dstPtr + x + 16), u23);
++        }
++
++        for (; x < width; ++x)
++            dstPtr[x] = av_clip_uint8(lrintf(255.0f * srcPtr[x]));
++
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStride[0];
++    }
++
++    return srcSliceH;
++}
++#endif
++
++static av_unused int float_y_to_uint_y_wrapper_opt(SwsContext *c, const uint8_t* src[],
++                                         int srcStride[], int srcSliceY,
++                                         int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    int y, x;
++    const int width = c->srcW;
++    const float scale = 255.0f;
++    const float half = 0.5f;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const float *srcPtr = (const float *)src[0];
++    uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
++
++    for (y = 0; y < srcSliceH; ++y) {
++        /* DNN outputs are usually normalized to [0, 1]. Fast-path that case. */
++        for (x = 0; x < width; ++x) {
++            float v = srcPtr[x];
++            if (!(v >= 0.0f && v <= 1.0f))
++                break;
++        }
++
++        if (x == width) {
++            for (x = 0; x < width; ++x)
++                dstPtr[x] = (uint8_t)(srcPtr[x] * scale + half);
++        } else {
++            for (x = 0; x < width; ++x)
++                dstPtr[x] = av_clip_uint8(lrintf(scale * srcPtr[x]));
++        }
++
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStride[0];
++    }
++
++    return srcSliceH;
++}
++
++static int float_y_to_uint_y_wrapper(SwsContext *c, const uint8_t* src[],
++                                     int srcStride[], int srcSliceY,
++                                     int srcSliceH, uint8_t* dst[], int dstStride[])
++{
++    if (c->srcW < 16)
++        return float_y_to_uint_y_wrapper_org(c, src, srcStride, srcSliceY,
++                                             srcSliceH, dst, dstStride);
++
++#if HAVE_AVX2 && (ARCH_X86 || ARCH_X86_64) && (defined(__GNUC__) || defined(__clang__))
++    if (av_get_cpu_flags() & AV_CPU_FLAG_AVX2)
++        return float_y_to_uint_y_wrapper_avx2(c, src, srcStride, srcSliceY,
++                                              srcSliceH, dst, dstStride);
++#endif
++#if HAVE_SSE2
++    return float_y_to_uint_y_wrapper_sse2(c, src, srcStride, srcSliceY,
++                                          srcSliceH, dst, dstStride);
++#else
++    return float_y_to_uint_y_wrapper_org(c, src, srcStride, srcSliceY,
++                                         srcSliceH, dst, dstStride);
++#endif
++}
++
+ static int uint16_y_to_float_y_wrapper(SwsContext *c, const uint8_t *src[],
+                                      int srcStride[], int srcSliceY,
+                                      int srcSliceH, uint8_t *dst[], int dstStride[])
+-- 
+2.34.1
+
