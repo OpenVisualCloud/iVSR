@@ -4,7 +4,8 @@ Each non-BasicVSR model is described by a JSON config file placed in this direct
 At runtime FFmpeg reads the file and configures the iVSR backend without any recompilation.
 
 **FFmpeg usage:**
-```
+
+```bash
 ./ffmpeg -i input.mp4 \
   -vf "format=rgb24,dnn_processing=dnn_backend=ivsr:\
 model=mymodel.xml:model_config=../model_configs/mymodel_config.json" \
@@ -18,15 +19,17 @@ BasicVSR does not use a JSON config — it is a built-in and uses `model_type=0`
 ## Required fields
 
 ### `name`
+
 Human-readable label used in FFmpeg log messages.  
 **Type:** string  
 **Example:** `"RIFE"`, `"VideoSeal"`
 
 ### `in_layout`
+
 Memory layout of the input tensor as understood by the iVSR SDK.
 
 | Value | Meaning |
-|---|---|
+| --- | --- |
 | `"NCHW"` | Batch × Channels × Height × Width (most common for single-frame RGB models) |
 | `"NHWC"` | Batch × Height × Width × Channels (VideoProc, CustVSR) |
 | `"NFHWC"` | Batch × Frames × Height × Width × Channels (BasicVSR only, built-in) |
@@ -36,6 +39,7 @@ Memory layout of the input tensor as understood by the iVSR SDK.
 ## Optional fields and their defaults
 
 ### `nif`
+
 Number of input frames consumed per inference call.  
 **Type:** integer ≥ 1  
 **Default (if absent):** `1` (single-frame)  
@@ -44,6 +48,7 @@ Number of input frames consumed per inference call.
 ---
 
 ### `channel_divisor`
+
 Divides the channel count reported to FFmpeg so it sees standard 3-channel frames.  
 Some models pack multiple frames along the channel axis; this corrects the mismatch.  
 **Type:** integer ≥ 1  
@@ -53,6 +58,7 @@ Some models pack multiple frames along the channel axis; this corrects the misma
 ---
 
 ### `align`
+
 Pads input width and height up to the nearest multiple of this value before reshaping.  
 **Type:** integer ≥ 0  
 **Default (if absent):** `0` (no alignment)  
@@ -61,6 +67,7 @@ Pads input width and height up to the nearest multiple of this value before resh
 ---
 
 ### `in_precision`
+
 Element type of the input tensor sent to the iVSR SDK.  
 **Type:** string or absent  
 **Supported values:** `"f32"`, `"u8"`, `"u16"`  
@@ -70,6 +77,7 @@ Element type of the input tensor sent to the iVSR SDK.
 ---
 
 ### `out_layout`
+
 Memory layout of the output tensor.  
 **Type:** string  
 **Supported values:** `"NCHW"`, `"NHWC"`, `"NFHWC"`  
@@ -79,6 +87,7 @@ Memory layout of the output tensor.
 ---
 
 ### `out_precision`
+
 Element type of the output tensor.  
 **Type:** string or absent  
 **Supported values:** `"fp32"`, `"u8"`, `"u16"`  
@@ -88,6 +97,7 @@ Element type of the output tensor.
 ---
 
 ### `out_precision_depth_derived`
+
 When `true`, the output precision is derived from the frame bit depth instead of `out_precision`: 8-bit frames → `u8`, 10/16-bit frames → `u16`.  
 **Type:** boolean  
 **Default (if absent):** `false`  
@@ -96,6 +106,7 @@ When `true`, the output precision is derived from the frame bit depth instead of
 ---
 
 ### `model_color`
+
 Colour space string sent to the iVSR SDK to describe the input tensor's colour format.  
 **Type:** string or absent  
 **Supported values:** `"RGB"`, `"I420_Three_Planes"`
@@ -110,6 +121,7 @@ Colour space string sent to the iVSR SDK to describe the input tensor's colour f
 ---
 
 ### `out_order`
+
 Output channel order used when writing pixels back into the FFmpeg frame buffer.  
 **Type:** string  
 **Supported values:** `"RGB"`, `"BGR"`, `"NONE"`  
@@ -119,6 +131,7 @@ Output channel order used when writing pixels back into the FFmpeg frame buffer.
 ---
 
 ### `window_type`
+
 Frame queuing strategy used to assemble the input tensor.
 
 | Value | Behaviour | Used by |
@@ -132,6 +145,7 @@ Frame queuing strategy used to assemble the input tensor.
 ---
 
 ### `window_init_dup`
+
 Only relevant when `window_type` is `"sliding"`.  
 When `true`, the first frame is duplicated to prime the sliding window so inference can begin immediately without waiting for `nif` distinct frames.  
 **Type:** boolean  
@@ -141,6 +155,7 @@ When `true`, the first frame is duplicated to prime the sliding window so infere
 ---
 
 ### `normalize_input`
+
 When `true`, uint8 pixel values [0, 255] are divided by 255 before being packed into the float32 input tensor, producing a [0.0, 1.0] range.  
 When `false`, raw pixel values are packed as-is into float32.  
 **Type:** boolean  
@@ -150,15 +165,17 @@ When `false`, raw pixel values are packed as-is into float32.
 ---
 
 ### `normalize_output`
+
 When `true`, float32 output values are multiplied by 255 and clipped to [0, 255] before being written into the output frame.  
 When `false`, float32 values are rounded and clipped directly.  
 **Type:** boolean  
 **Default (if absent):** `false`  
-**When to set:** `true` for RIFE, SPAN, and TSENet (model outputs [0,1] float that must be scaled back to [0,255]). All other shipped models output raw [0,255] and can omit this field.
+**When to set:** `true` for RIFE, SPAN, TSENet, and VideoProc (model outputs [0,1] float that must be scaled back to [0,255]). All other shipped models output raw [0,255] and can omit this field.
 
 ---
 
 ### `output_passthrough_dims`
+
 When `true`, the output frame dimensions are forced to match the input frame dimensions, regardless of what the model's output tensor reports.  
 Used for watermarking and passthrough models where the spatial size never changes.  
 **Type:** boolean  
@@ -168,11 +185,12 @@ Used for watermarking and passthrough models where the spatial size never change
 ---
 
 ### `color_format_auto`
+
 Controls how the colour space string is determined when `model_color` is absent.  
 Takes priority over `model_color` being set when the value is non-zero.
 
 | Value | Behaviour | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `0` | Use the `model_color` string directly | All standard RGB models |
 | `1` | Auto-detect from the input pixel format: RGB input → `"RGB"`, YUV input → `"I420_Three_Planes"` | VideoProc |
 | `2` | Always `"I420_Three_Planes"` regardless of input format | CustVSR |
@@ -184,32 +202,32 @@ Takes priority over `model_color` being set when the value is non-zero.
 
 ## Model parameter comparison
 
-| Parameter | RIFE | VideoSeal | TSENet | EDSR | VideoProc | CustVSR | SPAN |
-|---|---|---|---|---|---|---|---|
-| **name** | `"RIFE"` | `"VideoSeal"` | `"TSENet"` | `"Enhanced EDSR"` | `"VideoProc"` | `"Custom VSR"` | `"SPAN"` |
-| **nif** | `2` | `1` | `3` | `1` | `1` | `1` | `1` |
-| **channel_divisor** | `2` | *(absent→1)* | `3` | *(absent→1)* | *(absent→1)* | *(absent→1)* | *(absent→1)* |
-| **align** | `128` | `0` | `0` | `0` | `64` | `0` | `0` |
-| **in_layout** | `NCHW` | `NCHW` | `NCHW` | `NCHW` | `NHWC` | `NCHW` | `NCHW` |
-| **in_precision** | `f32` | `f32` | *(absent)* | `f32` | *(absent)* | *(absent)* | `f32` |
-| **out_layout** | `NCHW` | `NCHW` | `NHWC` | `NCHW` | `NHWC` | `NCHW` | `NCHW` |
-| **out_precision** | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` |
-| **model_color** | `RGB` | `RGB` | `RGB` | `RGB` | *(absent)* | *(absent)* | `RGB` |
-| **out_order** | `RGB` | `RGB` | `RGB` | `RGB` | *(absent→RGB)* | `NONE` | `RGB` |
-| **window_type** | `sliding` | `single` | `sliding` | `single` | `single` | `single` | `single` |
-| **window_init_dup** | `false` | `false` | `true` | `false` | `false` | `false` | `false` |
-| **normalize_input** | `true` | `false` | `false` | `false` | `false` | `false` | `true` |
-| **normalize_output** | `true` | `false` | `true` | `false` | `false` | `false` | `true` |
-| **output_passthrough_dims** | `false` | `true` | `false` | `false` | `true` | `false` | `false` |
-| **out_precision_depth_derived** | `false` | `false` | `false` | `false` | `false` | `false` | `false` |
-| **color_format_auto** | `0` | `0` | `0` | `0` | `1` | `2` | `0` |
+| Parameter | RIFE | VideoSeal | TSENet | EDSR | VideoProc | CustVSR | SPAN | HDRTVNet-LE |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **name** | `"RIFE"` | `"VideoSeal"` | `"TSENet"` | `"Enhanced EDSR"` | `"VideoProc"` | `"Custom VSR"` | `"SPAN"` | `"HDRTVNet-LE"` |
+| **nif** | `2` | `1` | `3` | `1` | `1` | `1` | `1` | `1` |
+| **channel_divisor** | `2` | *(absent→1)* | `3` | *(absent→1)* | *(absent→1)* | *(absent→1)* | *(absent→1)* | *(absent→1)* |
+| **align** | `128` | `0` | `0` | `0` | `64` | `0` | `0` | `0` |
+| **in_layout** | `NCHW` | `NCHW` | `NCHW` | `NCHW` | `NHWC` | `NCHW` | `NCHW` | `NCHW` |
+| **in_precision** | `f32` | `f32` | *(absent)* | `f32` | *(absent)* | *(absent)* | `f32` | `f32` |
+| **out_layout** | `NCHW` | `NCHW` | `NHWC` | `NCHW` | `NHWC` | `NCHW` | `NCHW` | `NCHW` |
+| **out_precision** | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` | `fp32` |
+| **model_color** | `RGB` | `RGB` | `RGB` | `RGB` | *(absent)* | *(absent)* | `RGB` | `RGB` |
+| **out_order** | `RGB` | `RGB` | `RGB` | `RGB` | *(absent→RGB)* | `NONE` | `RGB` | `RGB` |
+| **window_type** | `sliding` | `single` | `sliding` | `single` | `single` | `single` | `single` | `single` |
+| **window_init_dup** | `false` | `false` | `true` | `false` | `false` | `false` | `false` | `false` |
+| **normalize_input** | `true` | `false` | `false` | `false` | `false` | `false` | `true` | `false` |
+| **normalize_output** | `true` | `false` | `true` | `false` | `true` | `false` | `true` | `false` |
+| **output_passthrough_dims** | `false` | `true` | `false` | `false` | `true` | `false` | `false` | `false` |
+| **out_precision_depth_derived** | `false` | `false` | `false` | `false` | `false` | `false` | `false` | `true` |
+| **color_format_auto** | `0` | `0` | `0` | `0` | `1` | `2` | `0` | `0` |
 
 ---
 
 ## Summary of safe defaults (current state)
 
 | Parameter | C default | Safe to omit today? |
-|---|---|---|
+| --- | --- | --- |
 | `name` | — | required |
 | `in_layout` | — | required |
 | `nif` | `1` | yes, for single-frame models |
@@ -223,7 +241,7 @@ Takes priority over `model_color` being set when the value is non-zero.
 | `window_type` | `"single"` | yes, for single-frame models |
 | `window_init_dup` | `false` | yes, when false |
 | `normalize_input` | `false` | yes, for most models; set `true` only for RIFE, SPAN |
-| `normalize_output` | `false` | yes, for most models; set `true` only for RIFE, SPAN, TSENet |
+| `normalize_output` | `false` | yes, for most models; set `true` only for RIFE, SPAN, TSENet, VideoProc |
 | `output_passthrough_dims` | `false` | yes, when false |
 | `out_precision_depth_derived` | `false` | yes, always for current models |
 | `color_format_auto` | `0` | yes, when using `model_color` |
