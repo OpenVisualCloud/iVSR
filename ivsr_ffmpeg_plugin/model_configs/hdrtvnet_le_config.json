@@ -11,8 +11,8 @@
   "out_order":              "RGB",
   "window_type":            "single",
   "window_init_dup":        false,
-  "normalize_input":        false,
-  "normalize_output":       false,
+  "normalize_input":        true,
+  "normalize_output":       true,
   "output_passthrough_dims": false,
   "out_precision_depth_derived": false,
   "color_format_auto":      0
