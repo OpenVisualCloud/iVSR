@@ -112,7 +112,7 @@ Colour space string sent to the iVSR SDK to describe the input tensor's colour f
 **Supported values:** `"RGB"`, `"I420_Three_Planes"`
 
 | Value | Meaning |
-|---|---|
+| --- | --- |
 | `"RGB"` | Model expects interleaved RGB planes |
 | `"I420_Three_Planes"` | Model expects YUV 4:2:0 three-plane layout |
 
@@ -135,7 +135,7 @@ Output channel order used when writing pixels back into the FFmpeg frame buffer.
 Frame queuing strategy used to assemble the input tensor.
 
 | Value | Behaviour | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `"single"` | No queue; one frame is fed directly into the tensor per inference call | EDSR, SPAN, VideoSeal, VideoProc, CustVSR |
 | `"sliding"` | A sliding window of `nif` frames is maintained in a queue; oldest frame is dropped after each call | RIFE, TSENet |
 | `"in_queue"` | `nif` frames are read from the task's input queue (BasicVSR built-in path; not for JSON configs) | BasicVSR only |
@@ -160,7 +160,7 @@ When `true`, uint8 pixel values [0, 255] are divided by 255 before being packed 
 When `false`, raw pixel values are packed as-is into float32.  
 **Type:** boolean  
 **Default (if absent):** `false`  
-**When to set:** `true` for RIFE and SPAN (normalised [0,1] float input). All other shipped models use raw [0,255] and can omit this field.
+**When to set:** `true` for RIFE, SPAN and HDRTVNet-LE (normalised [0,1] float input). All other shipped models use raw [0,255] and can omit this field.
 
 ---
 
@@ -170,7 +170,7 @@ When `true`, float32 output values are multiplied by 255 and clipped to [0, 255]
 When `false`, float32 values are rounded and clipped directly.  
 **Type:** boolean  
 **Default (if absent):** `false`  
-**When to set:** `true` for RIFE, SPAN, TSENet, and VideoProc (model outputs [0,1] float that must be scaled back to [0,255]). All other shipped models output raw [0,255] and can omit this field.
+**When to set:** `true` for RIFE, SPAN, TSENet, VideoProc and HDRTVNet-LE (model outputs [0,1] float that must be scaled back to [0,255]). All other shipped models output raw [0,255] and can omit this field.
 
 ---
 
@@ -216,10 +216,10 @@ Takes priority over `model_color` being set when the value is non-zero.
 | **out_order** | `RGB` | `RGB` | `RGB` | `RGB` | *(absent→RGB)* | `NONE` | `RGB` | `RGB` |
 | **window_type** | `sliding` | `single` | `sliding` | `single` | `single` | `single` | `single` | `single` |
 | **window_init_dup** | `false` | `false` | `true` | `false` | `false` | `false` | `false` | `false` |
-| **normalize_input** | `true` | `false` | `false` | `false` | `false` | `false` | `true` | `false` |
-| **normalize_output** | `true` | `false` | `true` | `false` | `true` | `false` | `true` | `false` |
+| **normalize_input** | `true` | `false` | `false` | `false` | `false` | `false` | `true` | `true` |
+| **normalize_output** | `true` | `false` | `true` | `false` | `true` | `false` | `true` | `true` |
 | **output_passthrough_dims** | `false` | `true` | `false` | `false` | `true` | `false` | `false` | `false` |
-| **out_precision_depth_derived** | `false` | `false` | `false` | `false` | `false` | `false` | `false` | `true` |
+| **out_precision_depth_derived** | `false` | `false` | `false` | `false` | `false` | `false` | `false` | `false` |
 | **color_format_auto** | `0` | `0` | `0` | `0` | `1` | `2` | `0` | `0` |
 
 ---
@@ -240,8 +240,8 @@ Takes priority over `model_color` being set when the value is non-zero.
 | `out_order` | `"RGB"` | yes, except `"NONE"` for luma-only models |
 | `window_type` | `"single"` | yes, for single-frame models |
 | `window_init_dup` | `false` | yes, when false |
-| `normalize_input` | `false` | yes, for most models; set `true` only for RIFE, SPAN |
-| `normalize_output` | `false` | yes, for most models; set `true` only for RIFE, SPAN, TSENet, VideoProc |
+| `normalize_input` | `false` | yes, for most models; set `true` only for RIFE, SPAN and HDRTVNet-LE |
+| `normalize_output` | `false` | yes, for most models; set `true` only for RIFE, SPAN, TSENet, VideoProc and HDRTVNet-LE |
 | `output_passthrough_dims` | `false` | yes, when false |
 | `out_precision_depth_derived` | `false` | yes, always for current models |
 | `color_format_auto` | `0` | yes, when using `model_color` |
