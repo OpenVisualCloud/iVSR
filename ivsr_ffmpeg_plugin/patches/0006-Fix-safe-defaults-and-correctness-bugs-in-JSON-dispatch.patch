@@ -1,51 +1,118 @@
-]633;E;cat <<'HEADER'\x0aFrom Mon Sep 17 00:00:00 2001\x0aFrom: iVSR <ivsr@intel.com>\x0aDate: Thu, 12 Jun 2026 00:00:00 +0000\x0aSubject: [PATCH 0006] Fix safe defaults and correctness bugs in JSON config\x0a dispatch\x0a\x0aFour correctness fixes on top of patch 0005:\x0a\x0a1. Fix row-stride bug in unpack_output_window Y-plane path.\x0a   src[h * fw + w] used the unpadded frame width as the tensor row stride.\x0a   When align > 0 (e.g. VideoProc align=64) the tensor width is padded to a\x0a   multiple of align, so the stride must be output->width, not fw.\x0a   Corrupts output for frames whose width is not a multiple of align.\x0a\x0a2. Fix normalize_input default: 1 -> 0.\x0a   5 out of 7 shipped models need false (raw [0,255] I/O). The old default\x0a   of true silently corrupted output for VideoSeal, EDSR, VideoProc, and\x0a   CustVSR when the field was omitted from a JSON config.\x0a\x0a3. Fix normalize_output default: 1 -> 0.\x0a   Same rationale. Only RIFE, SPAN, and TSENet need normalize_output: true.\x0a\x0a4. Fix model_color default and reorder color-format dispatch.\x0a   When model_color is absent in the JSON and color_format_auto is 0, the\x0a   SDK received an empty string causing undefined behaviour. Now falls back\x0a   to "RGB" via a ternary in the else branch — no heap allocation, no leak.\x0a   Reorders the if/else chain so color_format_auto is checked first.\x0a\x0aAlso adds out_layout inheritance: when out_layout is absent from the JSON\x0ait is defaulted to in_layout. Models whose output layout differs from their\x0ainput layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.\x0a---\x0a libavfilter/dnn/dnn_backend_ivsr.c | 18 +++++++++++-------\x0a 1 file changed, 11 insertions(+), 7 deletions(-)\x0a\x0adiff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c\x0aHEADER\x0a;5f5a4624-09fd-42d5-95d4-06239d7a3549]633;CFrom Mon Sep 17 00:00:00 2001
+From Mon Sep 17 00:00:00 2001
 From: iVSR <ivsr@intel.com>
 Date: Thu, 12 Jun 2026 00:00:00 +0000
 Subject: [PATCH 0006] Fix safe defaults and correctness bugs in JSON config
  dispatch
 
-Four correctness fixes on top of patch 0005:
+Six correctness fixes on top of patch 0005:
 
 1. Fix row-stride bug in unpack_output_window Y-plane path.
    src[h * fw + w] used the unpadded frame width as the tensor row stride.
    When align > 0 (e.g. VideoProc align=64) the tensor width is padded to a
    multiple of align, so the stride must be output->width, not fw.
-   Corrupts output for frames whose width is not a multiple of align.
+   Fixed inside the shared 8-bit/10-bit paths below.
 
-2. Fix normalize_input default: 1 -> 0.
+2. Fix VideoProc 10-bit Y-plane output written as uint8_t.
+   The channels==1 branch always wrote uint8_t and clipped to [0,255].
+   For yuv420p10le the Y plane is uint16_t with values in [0,1023].
+   Writing 8-bit values into a 16-bit stride trashes every other byte.
+   Fix: detect bits > 8 via AVPixFmtDescriptor, write uint16_t using
+   linesize[0]>>1 as the row stride, and scale [0,1] -> [0,2^bits-1].
+
+3. Fix TV-range (MPEG/limited-range) clamping missing for VideoProc.
+   The old hardcoded switch(model_type) path clamped the Y plane to
+   [16,235] (8-bit) or [64,940] (10-bit) when color_range==AVCOL_RANGE_MPEG.
+   The JSON dispatch path had no equivalent, so limited-range sources
+   produced luma values outside the legal range.
+   Both fixes 2 and 3 are gated on name=="VideoProc" (case-insensitive).
+
+4. Fix normalize_input default: 1 -> 0.
    5 out of 7 shipped models need false (raw [0,255] I/O). The old default
    of true silently corrupted output for VideoSeal, EDSR, VideoProc, and
    CustVSR when the field was omitted from a JSON config.
 
-3. Fix normalize_output default: 1 -> 0.
+5. Fix normalize_output default: 1 -> 0.
    Same rationale. Only RIFE, SPAN, and TSENet need normalize_output: true.
 
-4. Fix model_color default and reorder color-format dispatch.
+6. Fix model_color default and reorder color-format dispatch.
    When model_color is absent in the JSON and color_format_auto is 0, the
    SDK received an empty string causing undefined behaviour. Now falls back
-   to "RGB" via a ternary in the else branch — no heap allocation, no leak.
+   to "RGB" via a ternary in the else branch -- no heap allocation, no leak.
    Reorders the if/else chain so color_format_auto is checked first.
 
 Also adds out_layout inheritance: when out_layout is absent from the JSON
 it is defaulted to in_layout. Models whose output layout differs from their
 input layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.
 ---
- libavfilter/dnn/dnn_backend_ivsr.c | 18 +++++++++++-------
- 1 file changed, 11 insertions(+), 7 deletions(-)
+ libavfilter/dnn/dnn_backend_ivsr.c | 60 lines changed
 
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 3eea72d..60695db 100644
 --- a/libavfilter/dnn/dnn_backend_ivsr.c
 +++ b/libavfilter/dnn/dnn_backend_ivsr.c
-@@ -565,7 +565,7 @@
-         for (int h = 0; h < fh; h++) {
-             uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
-             for (int w = 0; w < fw; w++) {
+@@ -547,13 +547,16 @@ static int pack_input_window(IVSRModel *m, void *base, DNNData *input, TaskItem
+     }
+ }
+ 
+-/* Generic float32 NCHW output unpack for JSON-loaded models.
+- * Uses md->normalize_output to decide whether to multiply by 255. */
++/* Generic float32 output unpack for JSON-loaded models.
++ * Uses md->normalize_output to decide whether to multiply by 255.
++ * For "VideoProc": single-channel Y-plane path handles 10-bit uint16_t samples
++ * and applies TV-range clamping ([16,235] / [64,940]) when color_range=MPEG. */
+ static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
+ {
+     const ModelDesc *md = get_model_desc(m);
+     const float *src = (const float *)output->data;
+     int fw = task->out_frame->width, fh = task->out_frame->height;
++    int is_videoproc = md->name && !av_strcasecmp(md->name, "VideoProc");
+ 
+     /* Single-channel (Y-plane only) model: write Y plane only.
+      * U/V chroma planes are copied by copy_uv_planes() in vf_dnn_processing.c
+@@ -562,12 +565,36 @@ static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
+      * inference_done++ can be reordered before in_frame reads under -O3,
+      * causing a use-after-free race with the main thread freeing in_frame. */
+     if (output->channels == 1) {
+-        for (int h = 0; h < fh; h++) {
+-            uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
+-            for (int w = 0; w < fw; w++) {
 -                float val = src[h * fw + w];
-+                float val = src[h * output->width + w];
-                 row[w] = (uint8_t)av_clip(
-                     (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
+-                row[w] = (uint8_t)av_clip(
+-                    (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
++        const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
++        int bits = pix_desc->comp[0].depth;
++        int is_tv_range = is_videoproc &&
++                          task->out_frame->color_range == AVCOL_RANGE_MPEG;
++        if (bits > 8) {
++            /* 10-bit (or 16-bit): samples are uint16_t, scale [0,1] -> [0,2^bits-1] */
++            float scale = (float)((1 << bits) - 1);
++            int lo = 0, hi = (1 << bits) - 1;
++            if (is_tv_range && bits == 10) { lo = 64;  hi = 940;  }
++            else if (is_tv_range && bits == 16) { lo = 256; hi = 60160; }
++            ptrdiff_t stride = task->out_frame->linesize[0] >> 1;
++            for (int h = 0; h < fh; h++) {
++                uint16_t *row = (uint16_t *)task->out_frame->data[0] + h * stride;
++                for (int w = 0; w < fw; w++) {
++                    float val = src[h * output->width + w];
++                    row[w] = (uint16_t)av_clip(
++                        (int)((md->normalize_output ? val * scale : val) + 0.5f), lo, hi);
++                }
++            }
++        } else {
++            /* 8-bit: samples are uint8_t */
++            int lo = 0, hi = 255;
++            if (is_tv_range) { lo = 16; hi = 235; }
++            for (int h = 0; h < fh; h++) {
++                uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++                for (int w = 0; w < fw; w++) {
++                    float val = src[h * output->width + w];
++                    row[w] = (uint8_t)av_clip(
++                        (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), lo, hi);
++                }
              }
-@@ -657,8 +657,8 @@
+         }
+         return;
+@@ -657,8 +684,8 @@ static int parse_model_config_json(DnnContext *ctx, const char *path, ModelDesc
      desc->unpack_output     = unpack_output_window;
      desc->nif_override      = 1;
      desc->channel_divisor   = 1;
@@ -56,7 +123,7 @@ diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_iv
      desc->window_type       = WINDOW_SINGLE;
      desc->out_order         = DCO_RGB;
  
-@@ -772,6 +772,9 @@
+@@ -772,6 +799,9 @@ static int parse_model_config_json(DnnContext *ctx, const char *path, ModelDesc
          free_dynamic_desc(&desc);
          return AVERROR(EINVAL);
      }
@@ -66,7 +133,7 @@ diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_iv
  
      *out_desc = desc;
      return 0;
-@@ -1362,18 +1365,20 @@
+@@ -1362,18 +1392,20 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
      default:
          break;
      }
@@ -91,5 +158,6 @@ diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_iv
          }
      }
      config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
+
 -- 
 2.25.1
