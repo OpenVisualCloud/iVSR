@@ -1,10 +1,11 @@
 From Mon Sep 17 00:00:00 2001
 From: iVSR <ivsr@intel.com>
-Date: Thu, 12 Jun 2026 00:00:00 +0000
-Subject: [PATCH 0006] Fix safe defaults and correctness bugs in JSON config
- dispatch
+Date: Thu, 16 Jul 2026 00:00:00 +0000
+Subject: [PATCH 0006] Fix correctness bugs in JSON dispatch and nireq>1 segfault
 
-Six correctness fixes on top of patch 0005:
+Twelve fixes on top of patch 0005 (six from the original 0006 plus six new):
+
+Original six correctness fixes:
 
 1. Fix row-stride bug in unpack_output_window Y-plane path.
    src[h * fw + w] used the unpadded frame width as the tensor row stride.
@@ -43,14 +44,59 @@ Six correctness fixes on top of patch 0005:
 Also adds out_layout inheritance: when out_layout is absent from the JSON
 it is defaulted to in_layout. Models whose output layout differs from their
 input layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.
+
+Six new fixes for the nireq > 1 segfault:
+
+7. Fix use-after-free race in ff_dnn_free_model_ivsr (primary segfault fix).
+   The old non-blocking drain loop exited as soon as the queue appeared
+   empty.  With nireq > 1 a callback thread can be between inference_done++
+   and ff_safe_queue_push_back at teardown time: the queue is already empty
+   (from the main thread's perspective) but the callback hasn't pushed back
+   yet.  ff_safe_queue_destroy then destroys the mutex while the callback is
+   still holding it, causing a non-deterministic SIGSEGV.
+   Fix: replace the while(size!=0) loop with a blocking for(nireq) loop so
+   teardown waits for every callback to complete push_back before destroying
+   the queue.
+
+8. Cache input tensor descriptor in IVSRModel at init time.
+   fill_model_input_ivsr called ivsr_get_attr(INPUT_TENSOR_DESC) on every
+   frame.  With nireq > 1 this raced with concurrent callback threads that
+   also called ivsr_get_attr(OUTPUT_TENSOR_DESC), potentially corrupting
+   both callers' local tensor_desc_t buffers if the SDK is not re-entrant.
+   Fix: query once at model-load time, store in cached_input_tensor_desc.
+
+9. Cache output tensor descriptor in IVSRModel at init time.
+   Same rationale as fix 8 for the output descriptor.
+   Fix: query once at model-load time, store in cached_output_tensor_desc.
+
+10. Use cached input descriptor in fill_model_input_ivsr.
+    Remove the per-frame ivsr_get_attr call; use cached_input_tensor_desc.
+
+11. Use cached descriptors in infer_completion_callback, get_input_ivsr,
+    and get_output_ivsr.
+    All three functions queried the SDK on every invocation.  Replace with
+    reads from the cached fields populated by fixes 8 and 9.
+
+12. Remove redundant ivsr_get_attr call in get_output_ivsr.
+    Eliminates the last remaining runtime SDK call from the hot path.
 ---
- libavfilter/dnn/dnn_backend_ivsr.c | 60 lines changed
+ libavfilter/dnn/dnn_backend_ivsr.c | 160 lines changed (75 insertions, 85 deletions)
 
 diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
-index 3eea72d..60695db 100644
---- a/libavfilter/dnn/dnn_backend_ivsr.c
-+++ b/libavfilter/dnn/dnn_backend_ivsr.c
-@@ -547,13 +547,16 @@ static int pack_input_window(IVSRModel *m, void *base, DNNData *input, TaskItem
+index 3eea72d..combined 100644
+@@ -63,6 +63,11 @@
+     AVFifo *frame_queue; //input frames queue
+     int sliding_window_frame_num; /* first-frame dup counter for sliding-window models */
+     ModelDesc *dynamic_desc;      /* heap-allocated descriptor for JSON-loaded models */
++    /* Cached tensor descriptors — populated once at init and re-used in every
++     * callback/fill call to avoid concurrent ivsr_get_attr() races under
++     * nireq > 1 (multiple SDK callback threads calling the SDK simultaneously). */
++    tensor_desc_t cached_input_tensor_desc;
++    tensor_desc_t cached_output_tensor_desc;
+ } IVSRModel;
+ 
+ typedef struct IVSRRequestItem {
+@@ -547,13 +552,16 @@
      }
  }
  
@@ -69,7 +115,7 @@ index 3eea72d..60695db 100644
  
      /* Single-channel (Y-plane only) model: write Y plane only.
       * U/V chroma planes are copied by copy_uv_planes() in vf_dnn_processing.c
-@@ -562,12 +565,36 @@ static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
+@@ -562,12 +570,36 @@
       * inference_done++ can be reordered before in_frame reads under -O3,
       * causing a use-after-free race with the main thread freeing in_frame. */
      if (output->channels == 1) {
@@ -112,7 +158,7 @@ index 3eea72d..60695db 100644
              }
          }
          return;
-@@ -657,8 +684,8 @@ static int parse_model_config_json(DnnContext *ctx, const char *path, ModelDesc
+@@ -657,8 +689,8 @@
      desc->unpack_output     = unpack_output_window;
      desc->nif_override      = 1;
      desc->channel_divisor   = 1;
@@ -123,7 +169,7 @@ index 3eea72d..60695db 100644
      desc->window_type       = WINDOW_SINGLE;
      desc->out_order         = DCO_RGB;
  
-@@ -772,6 +799,9 @@ static int parse_model_config_json(DnnContext *ctx, const char *path, ModelDesc
+@@ -772,6 +804,9 @@
          free_dynamic_desc(&desc);
          return AVERROR(EINVAL);
      }
@@ -133,7 +179,153 @@ index 3eea72d..60695db 100644
  
      *out_desc = desc;
      return 0;
-@@ -1362,18 +1392,20 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+@@ -792,29 +827,17 @@
+                                  IVSRRequestItem * request)
+ {
+     DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+     DNNData input;
+     LastLevelTaskItem *lltask;
+     TaskItem *task;
+     void *in_data = NULL;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+     int padding_height = 0, padding_width = 0;
+-    tensor_desc_t input_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+-
+-    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+ 
+-    set_dnndata_info(&input, &input_tensor_desc_get);
++    /* Use the cached input tensor descriptor populated at init time.
++     * Calling ivsr_get_attr() here races with concurrent callback threads
++     * that call ivsr_get_attr(OUTPUT_TENSOR_DESC) under nireq > 1. */
++    set_dnndata_info(&input, &ivsr_model->cached_input_tensor_desc);
+     /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
+     {
+         int div = get_model_desc(ivsr_model)->channel_divisor;
+@@ -904,7 +927,6 @@
+ 
+ static void infer_completion_callback(void *args)
+ {
+-    IVSRStatus status;
+     IVSRRequestItem *request = args;
+     LastLevelTaskItem *lltask = request->lltasks[0];
+     TaskItem *task = lltask->task;
+@@ -913,23 +935,12 @@
+     DNNData output;
+     DnnContext *ctx = ivsr_model->ctx;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+-    tensor_desc_t output_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+-
+-    // ivsr_get_attr can only get precision, layout, dimension and shape info
+-    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
+-        return;
+-    }
+ 
+-    set_dnndata_info(&output, &output_tensor_desc_get);
++    /* Use the cached output tensor descriptor populated at init time.
++     * Calling ivsr_get_attr() here from multiple SDK callback threads
++     * simultaneously (nireq > 1) causes a data race that corrupts the
++     * descriptor and leads to a non-deterministic segfault. */
++    set_dnndata_info(&output, &ivsr_model->cached_output_tensor_desc);
+ 
+     output.data = request->out_frames;
+     // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
+@@ -943,7 +954,7 @@
+     const AVPixFmtDescriptor* pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
+     const AVComponentDescriptor* comp_desc = &pix_desc->comp[0];
+     int bits = comp_desc->depth;
+-    av_assert0(request->lltask_count <= output_tensor_desc_get.shape[0]);
++    av_assert0(request->lltask_count <= ivsr_model->cached_output_tensor_desc.shape[0]);
+     av_assert0(request->lltask_count >= 1);
+     for (int i = 0; i < request->lltask_count; ++i) {
+         task = request->lltasks[i]->task;
+@@ -1019,24 +1030,9 @@
+                           const char *input_name)
+ {
+     IVSRModel *ivsr_model = model;
+-    DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+-    tensor_desc_t input_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+ 
+-    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+-
+-    set_dnndata_info(input, &input_tensor_desc_get);
++    /* Use the cached input tensor descriptor; no SDK call needed. */
++    set_dnndata_info(input, &ivsr_model->cached_input_tensor_desc);
+     /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
+     {
+         int div = get_model_desc(ivsr_model)->channel_divisor;
+@@ -1126,27 +1122,11 @@
+                            const char *output_name, int *output_width,
+                            int *output_height)
+ {
+-    int ret = 0;
+     IVSRModel *ivsr_model = model;
+-    DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+     DNNData output;
+-    tensor_desc_t output_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+ 
+-    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+-
+-    set_dnndata_info(&output, &output_tensor_desc_get);
++    /* Use the cached output tensor descriptor; no SDK call needed. */
++    set_dnndata_info(&output, &ivsr_model->cached_output_tensor_desc);
+     *output_height = output.height;
+     *output_width  = output.width;
+ 
+@@ -1155,7 +1135,7 @@
+         *output_width  = input_width;
+     }
+ 
+-    return ret;
++    return 0;
+ }
+ 
+ // Utility function to create and link config
+@@ -1362,18 +1342,20 @@
      default:
          break;
      }
@@ -158,6 +350,37 @@ index 3eea72d..60695db 100644
          }
      }
      config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
+@@ -1449,6 +1431,7 @@
+         av_log(ctx, AV_LOG_ERROR, "Failed to get input tensor description\n");
+         goto err;
+     }
++    ivsr_model->cached_input_tensor_desc = input_tensor_desc_get;
+ 
+     status =
+         ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+@@ -1456,6 +1439,7 @@
+         av_log(ctx, AV_LOG_ERROR, "Failed to get output description\n");
+         goto err;
+     }
++    ivsr_model->cached_output_tensor_desc = output_tensor_desc_get;
+ 
+     ivsr_model->request_queue = ff_safe_queue_create();
+     if (!ivsr_model->request_queue) {
+@@ -1657,7 +1641,13 @@
+         DnnContext *ctx = ivsr_model->ctx;
+         IVSRStatus status;
+ 
+-        while (ff_safe_queue_size(ivsr_model->request_queue) != 0) {
++        /* Drain ALL nireq requests using blocking pop so that every in-flight
++         * async callback has completed its ff_safe_queue_push_back() before we
++         * destroy the queue or any shared data.  The previous non-blocking
++         * size-check loop only waited for requests already in the queue and
++         * could race with callbacks that hadn't pushed back yet, leading to a
++         * use-after-free when the queue's mutex was subsequently destroyed. */
++        for (int i = 0; i < ctx->nireq; i++) {
+             IVSRRequestItem *item =
+                 ff_safe_queue_pop_front(ivsr_model->request_queue);
+             av_freep(&item->in_frames);
 
 -- 
 2.25.1
