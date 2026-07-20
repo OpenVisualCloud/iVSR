@@ -74,6 +74,7 @@ typedef enum {
     INPUT_TENSOR_DESC_SETTING     = 0xB, //!< Optional. To set input tensor description>
     OUTPUT_TENSOR_DESC_SETTING    = 0xC, //!< Optional. To set output tensor description>
     NUM_STREAMS      = 0xD, //!< Optional. To specify number of execution streams for the throughput mode.>
+    NUM_THREADS      = 0xE, //!< Optional. To cap the number of CPU inference threads (ov::inference_num_threads).>
 } IVSRConfigKey;
 
 typedef enum {

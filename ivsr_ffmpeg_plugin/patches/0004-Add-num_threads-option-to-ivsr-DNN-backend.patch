@@ -1,0 +1,76 @@
+From fe57cfc4d13159de002954a768207bde170dba3d Mon Sep 17 00:00:00 2001
+From: Amir Naghdinezhad <amir.naghdinezhad@intel.com>
+Date: Mon, 20 Jul 2026 10:49:08 -0700
+Subject: [PATCH] Add num_threads option to ivsr DNN backend
+
+Expose a num_threads option in the ivsr DNN backend so each ffmpeg
+instance can cap its OpenVINO CPU inference thread pool. When set (>0)
+it is plumbed through to the SDK as a NUM_THREADS config entry, chained
+into the existing config list. A value of 0 keeps the OpenVINO default
+(uncapped) behavior.
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 14 ++++++++++++--
+ libavfilter/dnn_interface.h        |  1 +
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index e52fe7b..01ab971 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -82,6 +82,7 @@ static const AVOption dnn_ivsr_options[] = {
+     { "model_type",  "dnn model type", OFFSET(model_type),  AV_OPT_TYPE_INT,    { .i64 = 0 },     0, MODEL_TYPE_NUM - 1, FLAGS},
+     { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
+     { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
++    { "num_threads",  "cap the number of CPU inference threads per instance (0 = OpenVINO default, uncapped).", OFFSET(num_threads),  AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1024, FLAGS},
+     { NULL }
+ };
+ 
+@@ -776,6 +777,7 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     ivsr_config_t *config_input_res = NULL;
+     ivsr_config_t *config_nireq = NULL;
+     ivsr_config_t *config_nstreams = NULL;
++    ivsr_config_t *config_nthreads = NULL;
+     int nif = 0;
+     ivsr_config_t *config_input_tensor = NULL;
+     ivsr_config_t *config_output_tensor = NULL;
+@@ -1002,15 +1004,23 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     if (config_nstreams == NULL)
+         goto err;
+ 
++    char nthreads_string[40] = {0};
++    if (ctx->ivsr_option.num_threads > 0) {
++        sprintf(nthreads_string, "%d", ctx->ivsr_option.num_threads);
++        config_nthreads = create_and_link_config(config_nstreams, NUM_THREADS, nthreads_string, ctx);
++        if (config_nthreads == NULL)
++            goto err;
++    }
++
+     if (ctx->ivsr_option.extension != NULL) {
+-        config_customlib = create_and_link_config(config_nstreams, CUSTOM_LIB, ctx->ivsr_option.extension, ctx);
++        config_customlib = create_and_link_config(config_nthreads ? config_nthreads : config_nstreams, CUSTOM_LIB, ctx->ivsr_option.extension, ctx);
+         if (config_customlib == NULL)
+             goto err;
+     }
+ 
+     if (ctx->ivsr_option.op_xml != NULL) {
+         config_cldnn = create_and_link_config(ctx->ivsr_option.extension != NULL ?
+-                                              config_customlib : config_nstreams,
++                                              config_customlib : (config_nthreads ? config_nthreads : config_nstreams),
+                                               CLDNN_CONFIG, ctx->ivsr_option.op_xml, ctx);
+         if (config_cldnn == NULL)
+             goto err;
+diff --git a/libavfilter/dnn_interface.h b/libavfilter/dnn_interface.h
+index 0444526..55d98c5 100644
+--- a/libavfilter/dnn_interface.h
++++ b/libavfilter/dnn_interface.h
+@@ -155,6 +155,7 @@ typedef struct iVSROptions {
+     float normalize_factor;
+     char *reshape_values;
+     int num_streams;
++    int num_threads;
+ 
+     uint32_t frame_input_height;
+     uint32_t frame_input_width;
+-- 
+2.34.1
+

@@ -2,21 +2,23 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include<cassert>
-#include<string>
-#include<unordered_map>
-#include<map>
 #include "ivsr.h"
-#include "engine.hpp"
-#include "ov_engine.hpp"
-#include "InferTask.hpp"
-#include "ivsr_smart_patch.hpp"
-#include "threading/ivsr_thread_executor.hpp"
-#include "utils.hpp"
+
+#include <algorithm>
+#include <cassert>
+#include <cctype>
+#include <map>
 #include <mutex>
 #include <sstream>
-#include <cctype>
-#include <algorithm>
+#include <string>
+#include <unordered_map>
+
+#include "InferTask.hpp"
+#include "engine.hpp"
+#include "ivsr_smart_patch.hpp"
+#include "ov_engine.hpp"
+#include "threading/ivsr_thread_executor.hpp"
+#include "utils.hpp"
 
 std::vector<std::string> parse_devices(const std::string& device_string) {
     std::string comma_separated_devices = device_string;
@@ -38,6 +40,7 @@ std::vector<std::string> parse_devices(const std::string& device_string) {
 
 void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
                          const size_t num_streams,
+                         const size_t num_threads,
                          const std::string& device,
                          const std::string& infer_precision,
                          const std::string& cldnn_config) {
@@ -69,7 +72,7 @@ void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
     // remove the hardware devices if MULTI appears in the devices list.
     auto hardware_devices = devices;
     if (if_multi) {
-        //ivsr_version_t version;
+        // ivsr_version_t version;
         ov::Version ov_version = ov::get_openvino_version();
         std::string ov_buildNumber = std::string(ov_version.buildNumber);
         // Parse out the currect virtual device as the target device.
@@ -110,6 +113,16 @@ void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
                 // insert inference precision to map device_config
                 if (!infer_precision.empty())
                     device_config.emplace(ov::hint::inference_precision(infer_precision));
+                // cap the CPU inference thread pool to avoid thread oversubscription
+                if (num_threads > 0) {
+                    device_config.emplace(ov::inference_num_threads(num_threads));
+                    // Disable OpenVINO CPU pinning. When inference_num_threads is set, the CPU
+                    // plugin enables thread pinning by default and deterministically binds the
+                    // threads to the same core block for every process. Independent concurrent
+                    // encodes then all collide on those few cores, leaving the rest of the
+                    // machine idle. Turning pinning off lets the OS scheduler spread the jobs.
+                    device_config.emplace(ov::hint::enable_cpu_pinning(false));
+                }
             }
         } catch (const ov::AssertFailure& e) {
             std::cerr << "Caught an ov::AssertFailure exception: " << e.what() << std::endl;
@@ -122,12 +135,12 @@ void parse_engine_config(std::map<std::string, ov::AnyMap>& config,
 }
 
 bool check_engine_config(std::string model, std::string device) {
-    if(model == "") {
-        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set model!");
+    if (model == "") {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "please set model!");
         return false;
     }
-    if(device == "") {
-        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG,"please set device!");
+    if (device == "") {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "please set device!");
         return false;
     }
     return true;
@@ -194,10 +207,7 @@ struct ivsr {
     bool patchSolution;
     std::vector<size_t> input_data_shape;  // shape of input data
 
-    ivsr()
-        : inferEngine(nullptr),
-          threadExecutor(nullptr),
-          patchSolution(false) {}
+    ivsr() : inferEngine(nullptr), threadExecutor(nullptr), patchSolution(false) {}
 
     // Define a constructor to initialize engine and other members if needed
     ivsr(engine<ov_engine>* engine,
@@ -214,7 +224,7 @@ struct ivsr {
           input_data_shape(std::move(shape)) {}
 };
 
-IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
+IVSRStatus ivsr_init(ivsr_config_t* configs, ivsr_handle* handle) {
     if (configs == nullptr || handle == nullptr) {
         ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_init");
         return IVSRStatus::GENERAL_ERROR;
@@ -227,9 +237,10 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     size_t frame_width = 0, frame_height = 0;
     std::unordered_map<std::string, std::string> config_map;
     size_t infer_request_num = 1;  // default infer_request_num set to 1
-    size_t num_streams = 1;  // default num_streams set to 1
-    const tensor_desc_t *input_tensor_desc = nullptr;
-    const tensor_desc_t *output_tensor_desc = nullptr;
+    size_t num_streams = 1;        // default num_streams set to 1
+    size_t num_threads = 0;        // default 0 = do not cap (use OpenVINO default)
+    const tensor_desc_t* input_tensor_desc = nullptr;
+    const tensor_desc_t* output_tensor_desc = nullptr;
 
     // Parse input config
     while (configs != nullptr) {
@@ -237,107 +248,119 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
         std::string unsupported_output;
 
         switch (configs->key) {
-            case IVSRConfigKey::INPUT_MODEL:
-                model = std::string(static_cast<const char*>(configs->value));
-                if (!checkFile(model)) {
-                    unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "INPUT_MODEL=" + std::string(static_cast<const char*>(configs->value));
+        case IVSRConfigKey::INPUT_MODEL:
+            model = std::string(static_cast<const char*>(configs->value));
+            if (!checkFile(model)) {
+                unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
+                unsupported_output = "INPUT_MODEL=" + std::string(static_cast<const char*>(configs->value));
+            }
+            std::cout << "[INFO] " << "Model Path:" << model << std::endl;
+            break;
+        case IVSRConfigKey::TARGET_DEVICE:
+            device = static_cast<const char*>(configs->value);
+            std::cout << "[INFO] " << "DEVICE:" << device << std::endl;
+            break;
+        case IVSRConfigKey::BATCH_NUM:
+            batch = static_cast<const char*>(configs->value);
+            break;
+        case IVSRConfigKey::VERBOSE_LEVEL:
+            verbose = static_cast<const char*>(configs->value);
+            break;
+        case IVSRConfigKey::CUSTOM_LIB:
+            custom_lib = static_cast<const char*>(configs->value);
+            if (!checkFile(custom_lib)) {
+                unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
+                unsupported_output = "CUSTOM_LIB=" + std::string(static_cast<const char*>(configs->value));
+            }
+            break;
+        case IVSRConfigKey::CLDNN_CONFIG:
+            cldnn_config = static_cast<const char*>(configs->value);
+            if (!checkFile(cldnn_config)) {
+                unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
+                unsupported_output = "CLDNN_CONFIG=" + std::string(static_cast<const char*>(configs->value));
+            }
+            break;
+        case IVSRConfigKey::PRECISION:
+            infer_precision = static_cast<const char*>(configs->value);
+            if (device.find("GPU") != std::string::npos) {
+                if (infer_precision != "f32" && infer_precision != "f16") {
+                    ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
+                    return IVSRStatus::UNSUPPORTED_CONFIG;
                 }
-                std::cout << "[INFO] " << "Model Path:" << model << std::endl;
-                break;
-            case IVSRConfigKey::TARGET_DEVICE:
-                device = static_cast<const char*>(configs->value);
-                std::cout << "[INFO] " << "DEVICE:" << device << std::endl;
-                break;
-            case IVSRConfigKey::BATCH_NUM:
-                batch = static_cast<const char*>(configs->value);
-                break;
-            case IVSRConfigKey::VERBOSE_LEVEL:
-                verbose = static_cast<const char*>(configs->value);
-                break;
-            case IVSRConfigKey::CUSTOM_LIB:
-                custom_lib = static_cast<const char*>(configs->value);
-                if (!checkFile(custom_lib)) {
-                    unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "CUSTOM_LIB=" + std::string(static_cast<const char*>(configs->value));
+            } else {
+                if (infer_precision != "f32" && infer_precision != "bf16") {
+                    ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
+                    return IVSRStatus::UNSUPPORTED_CONFIG;
                 }
-                break;
-            case IVSRConfigKey::CLDNN_CONFIG:
-                cldnn_config = static_cast<const char*>(configs->value);
-                if (!checkFile(cldnn_config)) {
-                    unsupported_status = IVSRStatus::UNSUPPORTED_CONFIG;
-                    unsupported_output = "CLDNN_CONFIG=" + std::string(static_cast<const char*>(configs->value));
-                }
-                break;
-            case IVSRConfigKey::PRECISION:
-                infer_precision = static_cast<const char*>(configs->value);
-                if (device.find("GPU") != std::string::npos) {
-                    if (infer_precision != "f32" && infer_precision != "f16") {
-                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
-                        return IVSRStatus::UNSUPPORTED_CONFIG;
-                    }
-                } else {
-                    if (infer_precision != "f32" && infer_precision != "bf16") {
-                        ivsr_status_log(IVSRStatus::UNSUPPORTED_CONFIG, "for PRECISION=");
-                        return IVSRStatus::UNSUPPORTED_CONFIG;
-                    }
-                }
-                break;
-            case IVSRConfigKey::RESHAPE_SETTINGS:
-                reshape_settings = convert_string_to_vector(static_cast<const char*>(configs->value));
-                /*
-                 * models like EDSR support odd input resolution, so remove the check inside SDK
-                //The layout of RESHAPE SETTINGS is NHW
-                int reshape_h = 0, reshape_w = 0;
-                reshape_h = reshape_settings[ov::layout::height_idx(ov::Layout("NHW"))];
-                reshape_w = reshape_settings[ov::layout::width_idx(ov::Layout("NHW"))];
-                if (reshape_h % 2 != 0 || reshape_w % 2 != 0) {
-                    ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, static_cast<const char*>(configs->value));
-                    return IVSRStatus::UNSUPPORTED_SHAPE;
-                }
-                */
-                break;
-            case IVSRConfigKey::INPUT_RES:
-                reso = convert_string_to_vector(static_cast<const char*>(configs->value));
-                frame_width  = reso[0];
-                frame_height = reso[1];
-                break;
-            case IVSRConfigKey::INFER_REQ_NUMBER:
-                try {
-                    auto num = std::stoul(static_cast<const char*>(configs->value));
-                    if (num > infer_request_num)
-                        infer_request_num = num;
-                    std::cout << "[INFO] Infer request num: " << infer_request_num << std::endl;
-                } catch (const std::invalid_argument& e) {
-                    std::cerr << "[ERROR] Invalid argument: " << static_cast<const char*>(configs->value) << std::endl;
-                } catch (const std::out_of_range& e) {
-                    std::cerr << "[ERROR] Out of range: " << static_cast<const char*>(configs->value) << std::endl;
-                }
-                break;
-            case IVSRConfigKey::INPUT_TENSOR_DESC_SETTING:
-                input_tensor_desc = static_cast<const tensor_desc_t *>(configs->value);
-                break;
-            case IVSRConfigKey::OUTPUT_TENSOR_DESC_SETTING:
-                output_tensor_desc = static_cast<const tensor_desc_t *>(configs->value);
-                break;
-            case IVSRConfigKey::NUM_STREAMS:
-                try {
-                    auto num = std::stoul(static_cast<const char*>(configs->value));
-                    if (num > num_streams)
-                        num_streams = num;
-                    std::cout << "[INFO] set num of streams: " << num_streams << std::endl;
-                } catch (const std::invalid_argument& e) {
-                    std::cerr << "[ERROR] Invalid argument for NUM_STREAMS: "
-                              << static_cast<const char*>(configs->value) << std::endl;
-                } catch (const std::out_of_range& e) {
-                    std::cerr << "[ERROR] Out of range value for NUM_STREAMS: "
-                              << static_cast<const char*>(configs->value) << std::endl;
-                }
-                break;
-            default:
-                unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
-                unsupported_output = std::to_string(configs->key);
-                break;
+            }
+            break;
+        case IVSRConfigKey::RESHAPE_SETTINGS:
+            reshape_settings = convert_string_to_vector(static_cast<const char*>(configs->value));
+            /*
+             * models like EDSR support odd input resolution, so remove the check inside SDK
+            //The layout of RESHAPE SETTINGS is NHW
+            int reshape_h = 0, reshape_w = 0;
+            reshape_h = reshape_settings[ov::layout::height_idx(ov::Layout("NHW"))];
+            reshape_w = reshape_settings[ov::layout::width_idx(ov::Layout("NHW"))];
+            if (reshape_h % 2 != 0 || reshape_w % 2 != 0) {
+                ivsr_status_log(IVSRStatus::UNSUPPORTED_SHAPE, static_cast<const char*>(configs->value));
+                return IVSRStatus::UNSUPPORTED_SHAPE;
+            }
+            */
+            break;
+        case IVSRConfigKey::INPUT_RES:
+            reso = convert_string_to_vector(static_cast<const char*>(configs->value));
+            frame_width = reso[0];
+            frame_height = reso[1];
+            break;
+        case IVSRConfigKey::INFER_REQ_NUMBER:
+            try {
+                auto num = std::stoul(static_cast<const char*>(configs->value));
+                if (num > infer_request_num)
+                    infer_request_num = num;
+                std::cout << "[INFO] Infer request num: " << infer_request_num << std::endl;
+            } catch (const std::invalid_argument& e) {
+                std::cerr << "[ERROR] Invalid argument: " << static_cast<const char*>(configs->value) << std::endl;
+            } catch (const std::out_of_range& e) {
+                std::cerr << "[ERROR] Out of range: " << static_cast<const char*>(configs->value) << std::endl;
+            }
+            break;
+        case IVSRConfigKey::INPUT_TENSOR_DESC_SETTING:
+            input_tensor_desc = static_cast<const tensor_desc_t*>(configs->value);
+            break;
+        case IVSRConfigKey::OUTPUT_TENSOR_DESC_SETTING:
+            output_tensor_desc = static_cast<const tensor_desc_t*>(configs->value);
+            break;
+        case IVSRConfigKey::NUM_STREAMS:
+            try {
+                auto num = std::stoul(static_cast<const char*>(configs->value));
+                if (num > num_streams)
+                    num_streams = num;
+                std::cout << "[INFO] set num of streams: " << num_streams << std::endl;
+            } catch (const std::invalid_argument& e) {
+                std::cerr << "[ERROR] Invalid argument for NUM_STREAMS: " << static_cast<const char*>(configs->value)
+                          << std::endl;
+            } catch (const std::out_of_range& e) {
+                std::cerr << "[ERROR] Out of range value for NUM_STREAMS: " << static_cast<const char*>(configs->value)
+                          << std::endl;
+            }
+            break;
+        case IVSRConfigKey::NUM_THREADS:
+            try {
+                num_threads = std::stoul(static_cast<const char*>(configs->value));
+                std::cout << "[INFO] set num of inference threads: " << num_threads << std::endl;
+            } catch (const std::invalid_argument& e) {
+                std::cerr << "[ERROR] Invalid argument for NUM_THREADS: " << static_cast<const char*>(configs->value)
+                          << std::endl;
+            } catch (const std::out_of_range& e) {
+                std::cerr << "[ERROR] Out of range value for NUM_THREADS: " << static_cast<const char*>(configs->value)
+                          << std::endl;
+            }
+            break;
+        default:
+            unsupported_status = IVSRStatus::UNSUPPORTED_KEY;
+            unsupported_output = std::to_string(configs->key);
+            break;
         }
 
         ivsr_status_log(unsupported_status, unsupported_output.c_str());
@@ -355,7 +378,7 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
 
     // Parse config for the inference engine
     std::map<std::string, ov::AnyMap> engine_configs;
-    parse_engine_config(engine_configs, num_streams, device, infer_precision, cldnn_config);
+    parse_engine_config(engine_configs, num_streams, num_threads, device, infer_precision, cldnn_config);
 
     if (input_tensor_desc == nullptr || output_tensor_desc == nullptr) {
         ivsr_status_log(IVSRStatus::GENERAL_ERROR, "Input or output tensor descriptor is null");
@@ -388,28 +411,27 @@ IVSRStatus ivsr_init(ivsr_config_t *configs, ivsr_handle *handle) {
     auto executor = new IVSRThread::IVSRThreadExecutor(executorConfig, ovEng);
 
     // Construct patch config
-    tensor_desc_t input_tensor = {
-        .precision = {0},
-        .layout = {0},
-        .tensor_color_format = {0},
-        .model_color_format = {0},
-        .scale = 0.0,
-        .dimension = 0,
-        .shape = {0}};
+    tensor_desc_t input_tensor = {.precision = {0},
+                                  .layout = {0},
+                                  .tensor_color_format = {0},
+                                  .model_color_format = {0},
+                                  .scale = 0.0,
+                                  .dimension = 0,
+                                  .shape = {0}};
     ovEng->get_attr("model_inputs", input_tensor);
 
-    tensor_desc_t output_tensor = {
-        .precision = {0},
-        .layout = {0},
-        .tensor_color_format = {0},
-        .model_color_format = {0},
-        .scale = 0.0,
-        .dimension = 0,
-        .shape = {0}};
+    tensor_desc_t output_tensor = {.precision = {0},
+                                   .layout = {0},
+                                   .tensor_color_format = {0},
+                                   .model_color_format = {0},
+                                   .scale = 0.0,
+                                   .dimension = 0,
+                                   .shape = {0}};
     ovEng->get_attr("model_outputs", output_tensor);
 
     PatchConfig patchConfig;
-    int m_input_width = input_tensor.shape[ov::layout::width_idx(ov::Layout(input_tensor.layout))];;
+    int m_input_width = input_tensor.shape[ov::layout::width_idx(ov::Layout(input_tensor.layout))];
+    ;
     int m_input_height = input_tensor.shape[ov::layout::height_idx(ov::Layout(input_tensor.layout))];
     // hard code
     int nif = input_tensor.dimension == 5 ? input_tensor.shape[1] : 1;
@@ -458,8 +480,7 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 
         // Smart patch inference using a smart pointer for automatic memory management
         std::unique_ptr<SmartPatch> smartPatch(
-            new SmartPatch(handle->patchConfig, input_data, output_data, int_shape, handle->patchSolution)
-        );
+            new SmartPatch(handle->patchConfig, input_data, output_data, int_shape, handle->patchSolution));
 
         // Prepare data
         int res = smartPatch->generatePatch();
@@ -490,8 +511,8 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 #ifdef ENABLE_LOG
             std::cout << "[Trace]: ivsr_process on patch: " << idx << std::endl;
 #endif
-            std::shared_ptr<InferTask> task = handle->threadExecutor->CreateTask(
-                patchList[idx], outputPatchList[idx], InferFlag::AUTO);
+            std::shared_ptr<InferTask> task =
+                handle->threadExecutor->CreateTask(patchList[idx], outputPatchList[idx], InferFlag::AUTO);
             handle->threadExecutor->Enqueue(task);
         }
 
@@ -500,8 +521,8 @@ IVSRStatus ivsr_process(ivsr_handle handle, char* input_data, char* output_data,
 
 #ifdef ENABLE_PERF
         double duration = get_duration_ms_till_now(totalStartTime);
-        std::cout << "[PERF] Patch inference with memory copy - Latency: "
-                  << double_to_string(duration) << "ms" << std::endl;
+        std::cout << "[PERF] Patch inference with memory copy - Latency: " << double_to_string(duration) << "ms"
+                  << std::endl;
         std::cout << "[PERF] Patch inference with memory copy - Throughput: "
                   << double_to_string(handle->patchConfig.nif * 1000.0 / duration) << "FPS" << std::endl;
 #endif
@@ -568,36 +589,36 @@ IVSRStatus ivsr_process_async(ivsr_handle handle, char* input_data, char* output
     return IVSRStatus::OK;
 }
 
-IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs){
-    if(configs == nullptr){
+IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs) {
+    if (configs == nullptr) {
         ivsr_status_log(IVSRStatus::GENERAL_ERROR, "in ivsr_reconfig");
         return IVSRStatus::GENERAL_ERROR;
     }
 
-    try{
+    try {
         // reset config in container
-        while(configs!=nullptr){
-            switch(configs->key){
-                case IVSRConfigKey::INPUT_MODEL:
-                    handle->vsr_config["model"] = static_cast<const char*>(configs->value);
-                    break;
-                case IVSRConfigKey::TARGET_DEVICE:
-                    handle->vsr_config["device"] = static_cast<const char*>(configs->value);
-                    break;
-                case IVSRConfigKey::BATCH_NUM:
-                    handle->vsr_config["batch_num"] = static_cast<const char*>(configs->value);
-                    break;
-                case IVSRConfigKey::VERBOSE_LEVEL:
-                    handle->vsr_config["verbose_level"] = static_cast<const char*>(configs->value);
-                    break;
-                case IVSRConfigKey::CUSTOM_LIB:
-                    handle->vsr_config["custom_lib"] = static_cast<const char*>(configs->value);
-                    break;
-                case IVSRConfigKey::CLDNN_CONFIG:
-                    handle->vsr_config["cldnn_config"] = static_cast<const char*>(configs->value);
-                    break;
-                default:
-                    break;
+        while (configs != nullptr) {
+            switch (configs->key) {
+            case IVSRConfigKey::INPUT_MODEL:
+                handle->vsr_config["model"] = static_cast<const char*>(configs->value);
+                break;
+            case IVSRConfigKey::TARGET_DEVICE:
+                handle->vsr_config["device"] = static_cast<const char*>(configs->value);
+                break;
+            case IVSRConfigKey::BATCH_NUM:
+                handle->vsr_config["batch_num"] = static_cast<const char*>(configs->value);
+                break;
+            case IVSRConfigKey::VERBOSE_LEVEL:
+                handle->vsr_config["verbose_level"] = static_cast<const char*>(configs->value);
+                break;
+            case IVSRConfigKey::CUSTOM_LIB:
+                handle->vsr_config["custom_lib"] = static_cast<const char*>(configs->value);
+                break;
+            case IVSRConfigKey::CLDNN_CONFIG:
+                handle->vsr_config["cldnn_config"] = static_cast<const char*>(configs->value);
+                break;
+            default:
+                break;
             }
             configs = configs->next;
         }
@@ -613,49 +634,41 @@ IVSRStatus ivsr_reconfig(ivsr_handle handle, ivsr_config_t* configs){
     return IVSRStatus::OK;
 }
 
-IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value){
-    switch (key)
-    {
-        case IVSRAttrKey::IVSR_VERSION:
-        {
-            value = (void *)"ivsr_release:2025/03";
-            break;
-        }
-        case IVSRAttrKey::INPUT_TENSOR_DESC:
-        {
-            handle->inferEngine->get_attr("model_inputs", *(static_cast<tensor_desc_t *>(value)));
-            break;
-        }
-        case IVSRAttrKey::OUTPUT_TENSOR_DESC:
-        {
-            handle->inferEngine->get_attr("model_outputs", *(static_cast<tensor_desc_t *>(value)));
-            break;
-        }
-        case IVSRAttrKey::NUM_INPUT_FRAMES:
-        {
-            int* nif = (int*) value;
-            *nif = handle->patchConfig.nif;
-            break;
-        }
-        case IVSRAttrKey::INPUT_DIMS:
-        {
-            size_t dims = 0;
-            handle->inferEngine->get_attr("input_dims", dims);
-            *((size_t *)value) = dims;
-            break;
-        }
-        case IVSRAttrKey::OUTPUT_DIMS:
-        {
-            size_t dims = 0;
-            handle->inferEngine->get_attr("output_dims", dims);
-            *((size_t *)value) = dims;
-            break;
-        }
-        default:
-        {
-            ivsr_status_log(IVSRStatus::UNSUPPORTED_KEY,(char*)key);
-            return IVSRStatus::UNSUPPORTED_KEY;
-        }
+IVSRStatus ivsr_get_attr(ivsr_handle handle, IVSRAttrKey key, void* value) {
+    switch (key) {
+    case IVSRAttrKey::IVSR_VERSION: {
+        value = (void*)"ivsr_release:2025/03";
+        break;
+    }
+    case IVSRAttrKey::INPUT_TENSOR_DESC: {
+        handle->inferEngine->get_attr("model_inputs", *(static_cast<tensor_desc_t*>(value)));
+        break;
+    }
+    case IVSRAttrKey::OUTPUT_TENSOR_DESC: {
+        handle->inferEngine->get_attr("model_outputs", *(static_cast<tensor_desc_t*>(value)));
+        break;
+    }
+    case IVSRAttrKey::NUM_INPUT_FRAMES: {
+        int* nif = (int*)value;
+        *nif = handle->patchConfig.nif;
+        break;
+    }
+    case IVSRAttrKey::INPUT_DIMS: {
+        size_t dims = 0;
+        handle->inferEngine->get_attr("input_dims", dims);
+        *((size_t*)value) = dims;
+        break;
+    }
+    case IVSRAttrKey::OUTPUT_DIMS: {
+        size_t dims = 0;
+        handle->inferEngine->get_attr("output_dims", dims);
+        *((size_t*)value) = dims;
+        break;
+    }
+    default: {
+        ivsr_status_log(IVSRStatus::UNSUPPORTED_KEY, (char*)key);
+        return IVSRStatus::UNSUPPORTED_KEY;
+    }
     }
     return IVSRStatus::OK;
 }
