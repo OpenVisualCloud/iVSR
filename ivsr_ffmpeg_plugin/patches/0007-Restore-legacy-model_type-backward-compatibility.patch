@@ -1,0 +1,186 @@
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -43,11 +43,19 @@
+ #define DNN_MORE_FRAMES FFERRTAG('M','O','R','E')
+
+ typedef enum {
+-    BASICVSR =  0,  /* Only built-in model: multi-frame out_queue output cannot
+-                     * be expressed in a JSON config. Use model_type=0. */
+-    MODEL_TYPE_NUM  /* = 1 */
++    BASICVSR =  0,
++    VIDEOPROC = 1,
++    EDSR      = 2,
++    CUSTVSR   = 3,
++    TSENET    = 4,
++    RIFE      = 5,
++    SPAN      = 6,
++    VIDEOSEAL = 7,
++    HDRTVNET_LE = 8,
++    MODEL_TYPE_NUM  /* = 9 */
+ } ModelType;
+
++/* Forward declaration for function pointer types and model descriptor */
+ typedef struct ModelDesc ModelDesc; /* forward declaration — defined after AVOptions */
+
+ typedef struct IVSRModel {
+@@ -86,8 +93,10 @@ static const AVOption dnn_ivsr_options[] = {
+     { "extension",  "extension lib file full path, usable for BasicVSR model", OFFSET(extension),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "model_type",
+-      "0 = BasicVSR built-in (multi-frame out_queue output, no JSON path). "
+-      "For all other models, leave model_type at its default and set model_config instead.",
++      "0 = Enhanced BasicVSR, 1 = SVP/VideoProc, 2 = Enhanced EDSR, "
++      "3 = Custom VSR, 4 = TSENet, 5 = RIFE, 6 = SPAN, 7 = VideoSeal, 8 = HDRTVNet-LE. "
++      "model_config takes priority if both are set. Legacy option: set model_type for built-in "
++      "descriptor table dispatch; omit model_type and use model_config for JSON-based dispatch.",
+       OFFSET(model_type), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, MODEL_TYPE_NUM - 1, FLAGS},
+     { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
+     { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
+@@ -179,19 +188,109 @@ static int  pack_input_basicvsr   (IVSRModel *m, void *base, DNNData *in, TaskI
+ static void unpack_output_basicvsr(IVSRModel *m, TaskItem *t, DNNData *out);
+ /* Generic window-based pack/unpack — used by all JSON-config models (model_config set)
+  * and any future built-in models whose I/O fits the generic path. */
+ static int  pack_input_window     (IVSRModel *m, void *base, DNNData *in, TaskItem *t);
+ static void unpack_output_window  (IVSRModel *m, TaskItem *t, DNNData *out);
+
+-/* ---- The descriptor table ----
+- * Only BasicVSR lives here because its multi-frame out_queue output requires
+- * dedicated C functions that cannot be expressed in a JSON config.
+- * All other models: omit model_type and set model_config=<path>.json instead.
+- * Canonical configs: model_configs/{videoproc,edsr,custvsr,tsenet,rife,videoseal}_config.json
++/* ---- The descriptor table (backward-compatible) ----
++ * This table provides built-in descriptors for all legacy models (BASICVSR through HDRTVNET_LE).
++ * Users can:
++ *   1. Legacy path: set model_type=N → uses model_table[N] descriptor
++ *   2. JSON path: set model_config=<path>.json → loads dynamic descriptor (model_type ignored)
++ *   3. Hybrid: set both → model_config takes priority (backward-compatible override)
++ *
++ * The table entries mirror the canonical JSON configs in model_configs/*.json so that
++ * existing production code using model_type=1..8 continues to work without modification.
++ *
++ * Field guide:
++ *   name, nif_override, channel_divisor, align,
++ *   in_layout, in_precision, out_layout, out_precision, model_color,
++ *   out_order, pack_input, unpack_output,
++ *   out_precision_depth_derived, output_passthrough_dims, color_format_auto,
++ *   sliding_window_init_dup, window_type, normalize_input, normalize_output
+  * -------------------------------------------------------------------- */
+ static const ModelDesc model_table[] = {
+-    /* [BASICVSR] */ { "BasicVSR", 0, 1, 32, "NFHWC", NULL, "NFHWC", NULL, "RGB", DCO_RGB,
+-                       pack_input_basicvsr, unpack_output_basicvsr },
++    /* [BASICVSR=0] — requires OpenVINO 2022.3 with custom patches */
++    { .name = "BasicVSR", .nif_override = 0, .channel_divisor = 1, .align = 32,
++      .in_layout = "NFHWC", .in_precision = NULL, .out_layout = "NFHWC", .out_precision = NULL,
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_basicvsr, .unpack_output = unpack_output_basicvsr,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_IN_QUEUE,
++      .normalize_input = 0, .normalize_output = 0 },
++
++    /* [VIDEOPROC=1] — SVP models, Y-channel SR, auto-detect RGB/I420 from pixel format */
++    { .name = "VideoProc", .nif_override = 1, .channel_divisor = 1, .align = 64,
++      .in_layout = "NHWC", .in_precision = NULL, .out_layout = "NHWC", .out_precision = "fp32",
++      .model_color = NULL, .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 1, .color_format_auto = 1,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 0, .normalize_output = 1 },
++
++    /* [EDSR=2] — Enhanced EDSR single-frame RGB SR, raw [0,255] float32 I/O */
++    { .name = "Enhanced EDSR", .nif_override = 1, .channel_divisor = 1, .align = 0,
++      .in_layout = "NCHW", .in_precision = "f32", .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 0, .normalize_output = 0 },
++
++    /* [CUSTVSR=3] — Custom VSR, Y-channel only (yuv420p), color_format_auto=2 forces I420 */
++    { .name = "Custom VSR", .nif_override = 1, .channel_divisor = 1, .align = 0,
++      .in_layout = "NCHW", .in_precision = NULL, .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = NULL, .out_order = DCO_NONE,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 2,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 0, .normalize_output = 0 },
++
++    /* [TSENET=4] — 3-frame temporal SR, sliding window with first-frame duplication */
++    { .name = "TSENet", .nif_override = 3, .channel_divisor = 3, .align = 0,
++      .in_layout = "NCHW", .in_precision = NULL, .out_layout = "NHWC", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 1, .window_type = WINDOW_SLIDING,
++      .normalize_input = 0, .normalize_output = 1 },
++
++    /* [RIFE=5] — Frame interpolation, 2-frame sliding window, [0,1] normalized I/O, 128px align */
++    { .name = "RIFE", .nif_override = 2, .channel_divisor = 2, .align = 128,
++      .in_layout = "NCHW", .in_precision = "f32", .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SLIDING,
++      .normalize_input = 1, .normalize_output = 1 },
++
++    /* [SPAN=6] — Single-frame RGB SR, [0,1] normalized I/O, supports x2/x4 variants */
++    { .name = "SPAN", .nif_override = 1, .channel_divisor = 1, .align = 0,
++      .in_layout = "NCHW", .in_precision = "f32", .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 1, .normalize_output = 1 },
++
++    /* [VIDEOSEAL=7] — Invisible watermarking, raw [0,255] float32, passthrough dims */
++    { .name = "VideoSeal", .nif_override = 1, .channel_divisor = 1, .align = 0,
++      .in_layout = "NCHW", .in_precision = "f32", .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 1, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 0, .normalize_output = 0 },
++
++    /* [HDRTVNET_LE=8] — HDR local enhancement (Path A), [0,1] normalized I/O */
++    { .name = "HDRTVNet-LE", .nif_override = 1, .channel_divisor = 1, .align = 0,
++      .in_layout = "NCHW", .in_precision = "f32", .out_layout = "NCHW", .out_precision = "fp32",
++      .model_color = "RGB", .out_order = DCO_RGB,
++      .pack_input = pack_input_window, .unpack_output = unpack_output_window,
++      .out_precision_depth_derived = 0, .output_passthrough_dims = 0, .color_format_auto = 0,
++      .sliding_window_init_dup = 0, .window_type = WINDOW_SINGLE,
++      .normalize_input = 1, .normalize_output = 1 },
+ };
++
+ av_unused static void model_table_size_check(void) {
+     /* Compile-time assert: table has exactly MODEL_TYPE_NUM entries */
+     typedef char model_table_wrong_size[(sizeof(model_table)/sizeof(model_table[0]) == MODEL_TYPE_NUM) ? 1 : -1];
+@@ -1219,10 +1291,12 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+
+     ivsr_model->model_type = ctx->ivsr_option.model_type;
+
+-    /* When model_config is provided, parse the JSON descriptor and use the JSON
+-     * dispatch path. model_type is ignored — dynamic_desc takes priority in
+-     * get_model_desc(). Omitting model_config selects the BasicVSR built-in. */
++    /* Backward-compatible dispatch:
++     *   - If model_config is provided, parse JSON and use dynamic_desc (takes priority).
++     *   - Otherwise, use model_table[model_type] for built-in descriptor.
++     * get_model_desc() returns dynamic_desc if non-NULL, else model_table[model_type]. */
+     if (ctx->ivsr_option.model_config) {
++        av_log(ctx, AV_LOG_INFO, "Loading JSON model config from: %s\n", ctx->ivsr_option.model_config);
+         if (parse_model_config_json(ctx, ctx->ivsr_option.model_config,
+                                     &ivsr_model->dynamic_desc) < 0)
+             goto err;
+@@ -1378,11 +1452,9 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     }
+     char shape_string[40] = {0};
+     if (!ivsr_model->dynamic_desc &&
+-        (ivsr_model->model_type < 0 || ivsr_model->model_type >= MODEL_TYPE_NUM)) {
+-        av_log(ctx, AV_LOG_ERROR,
+-               "model_type %d out of range and no model_config provided\n",
+-               ivsr_model->model_type);
+-        return DNN_GENERIC_ERROR;
++        ivsr_model->model_type >= MODEL_TYPE_NUM) {
++        av_log(ctx, AV_LOG_WARNING, "model_type %d out of range; using default (BASICVSR)\n", ivsr_model->model_type);
++        ivsr_model->model_type = BASICVSR;
+     }
+     sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+     config_reshape = create_and_link_config(config_nireq, RESHAPE_SETTINGS, shape_string, ctx);
