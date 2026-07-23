@@ -25,7 +25,7 @@ prepare_dependencies() {
     build-essential \
     apt-utils cmake cython3 flex bison gcc g++ git make patch pkg-config wget \
     libdrm-dev libtool libusb-1.0-0-dev xz-utils ocl-icd-opencl-dev opencl-headers \
-    apt-utils gpg-agent software-properties-common wget python3-dev libpython3-dev python3-pip
+    apt-utils gpg-agent software-properties-common wget python3-dev libpython3-dev python3-pip nasm yasm
 }
 
 config_git_users() {
@@ -109,11 +109,27 @@ build_install_ivsr_sdk() {
   echo "Build ivsr sdk finished."
 }
 
+build_install_svt_av1() {
+    echo "Building and installing SVT-AV1 library..."
+    svtav1_repo=https://gitlab.com/AOMediaCodec/SVT-AV1.git
+    svtav1_branch=v4.2.0
+    ivsr_svtav1_dir=${base_dir}/ivsr_svtav1/SVT-AV1
+    if [ ! -d "${ivsr_svtav1_dir}" ]; then
+        git clone --depth 1 --branch ${svtav1_branch} ${svtav1_repo} ${ivsr_svtav1_dir}
+        git config --global --add safe.directory ${ivsr_svtav1_dir}
+    fi
+    cd ${ivsr_svtav1_dir}/Build
+    cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release
+    make -j$(nproc)
+    sudo make install
+    echo "Build svt-av1 finished."
+}
+
 build_ffmpeg() {
   echo "Building FFMPEG with specific libraries support..."
   sudo -E apt-get update && \
     DEBIAN_FRONTEND=noninteractive sudo apt-get install -y --no-install-recommends \
-    ca-certificates tar g++ wget pkg-config nasm yasm libglib2.0-dev flex bison gobject-introspection libgirepository1.0-dev \
+    ca-certificates tar g++ wget pkg-config libglib2.0-dev flex bison gobject-introspection libgirepository1.0-dev \
     python3-dev libx11-dev libxv-dev libxt-dev libasound2-dev libpango1.0-dev libtheora-dev libvisual-0.4-dev libgl1-mesa-dev \
     libcurl4-gnutls-dev librtmp-dev libx264-dev libx265-dev libde265-dev libva-dev libtbb-dev \
     patchutils
@@ -180,7 +196,8 @@ build_ffmpeg() {
       --enable-version3 \
       --enable-libivsr \
       --enable-libx264 \
-      --enable-libx265
+      --enable-libx265 \
+      --enable-libsvtav1
 
   make -j$(nproc)
   sudo make install
@@ -245,6 +262,7 @@ main() {
     install_openvino_from_apt "$ov_version" 
   fi
   build_install_ivsr_sdk
+  build_install_svt_av1
   build_ffmpeg
 }
 

@@ -6,6 +6,10 @@ The patches included in `patches` folder are specifically for FFmpeg n8.1.<br>
 <img src="./figs/ffmpeg_ivsr_sdk_backend.png" width = 80% height = 80% />
 </div>
 
+## Docker image build and test
+
+For full instructions on building the Docker image, see [docs/docker_image_build.md](../docs/docker_image_build.md).
+
 ## How to run inference with FFmpeg-plugin
 To run inference with iVSR SDK, you need to specify `ivsr` as the backend for the `dnn_processing` filter. Here is an example of how to do it: `dnn_processing=dnn_backend=ivsr`. <br>
 Additionally, there are other parameters that you can use. These parameters are listed in the table below:<br>

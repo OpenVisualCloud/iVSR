@@ -2,17 +2,3 @@ bin
 build
 lib
 
-# Special ignored files for release version
-ivsr_sdk/privates/model_guard/*
-ivsr_ov/based_on_openvino_2022.1/*
-ivsr_sdk/tools/*
-ivsr_sdk/ov2022.3.dockerfile
-ivsr_sdk/ov2023.2.dockerfile
-ivsr_sdk/build_docker.sh
-ivsr_sdk/build.sh
-ivsr_sdk/test/*
-ivsr_ov/based_on_openvino_2022.3/Dockerfile
-ivsr_ov/based_on_openvino_2022.3/build_docker.sh
-ivsr_ov/based_on_openvino_2022.3/README.md
-ivsr_ov/README.md
-test_cases/*
