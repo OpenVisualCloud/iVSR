@@ -168,6 +168,7 @@ RUN cmake .. \
 RUN dnf -y --enablerepo=crb install nasm
 RUN dnf -y --enablerepo=devel install yasm
 RUN dnf -y install diffutils
+RUN dnf -y install patchutils
 
 # build libx264
 WORKDIR ${WORKSPACE}
@@ -195,16 +196,24 @@ ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${IVSR_DIR}/ivsr_ffmpeg_plugin
 ARG FFMPEG_DIR=${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
 
 ARG FFMPEG_REPO=https://github.com/FFmpeg/FFmpeg.git
-ARG FFMPEG_VERSION=n7.1
+ARG FFMPEG_VERSION=n8.1
 WORKDIR ${FFMPEG_DIR}
 RUN git clone ${FFMPEG_REPO} ${FFMPEG_DIR} && \
     git checkout ${FFMPEG_VERSION}
 COPY ./ivsr_ffmpeg_plugin/patches/*.patch ${FFMPEG_DIR}/
-RUN { set -e; \
-  for patch_file in $(find -iname "*.patch" | sort -n); do \
-    echo "Applying: ${patch_file}"; \
-    git am --whitespace=fix ${patch_file}; \
-  done; }
+RUN filterdiff \
+        -x '*/configure' \
+        -x '*/dnn_interface.c' \
+        -x '*/swscale_unscaled.c' \
+        0001-*.patch | \
+        git apply --3way --ignore-whitespace - && \
+    git apply --ignore-whitespace 0004-*.patch && \
+    git add -A && \
+    git apply --3way --whitespace=fix 0002-*.patch && \
+    git apply --3way --whitespace=fix 0003-*.patch && \
+    git apply --3way --whitespace=fix 0005-*.patch && \
+    git apply --3way --whitespace=fix 0006-*.patch && \
+    git apply --3way --whitespace=fix 0007-*.patch
 
 RUN ./configure \
 --extra-cflags=-fopenmp \

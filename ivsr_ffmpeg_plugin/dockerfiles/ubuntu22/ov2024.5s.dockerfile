@@ -79,7 +79,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates tar g++ wget pkg-config nasm yasm libglib2.0-dev flex bison gobject-introspection libgirepository1.0-dev \
     python3-dev libx11-dev libxv-dev libxt-dev libasound2-dev libpango1.0-dev libtheora-dev libvisual-0.4-dev libgl1-mesa-dev \
-    libcurl4-gnutls-dev librtmp-dev libx264-dev libx265-dev libde265-dev libva-dev libtbb-dev && \
+    libcurl4-gnutls-dev librtmp-dev libx264-dev libx265-dev libde265-dev libva-dev libtbb-dev patchutils && \
     rm -rf /var/lib/apt/lists/*
 
 # Build iVSR SDK
@@ -94,7 +94,7 @@ RUN mkdir -p build && cd build && \
 # Build and install FFmpeg with libopenvino support
 # FFmpeg setup and build
 ARG FFMPEG_REPO=https://github.com/FFmpeg/FFmpeg.git
-ARG FFMPEG_VERSION=n7.1
+ARG FFMPEG_VERSION=n8.1
 ARG FFMPEG_IVSR_SDK_PLUGIN_DIR=${WORKSPACE}/ivsr/ivsr_ffmpeg_plugin
 WORKDIR ${FFMPEG_IVSR_SDK_PLUGIN_DIR}/ffmpeg
 RUN git config --global user.email "noname@example.com" && \
@@ -103,10 +103,19 @@ RUN git config --global user.email "noname@example.com" && \
     git checkout ${FFMPEG_VERSION}
 
 COPY ./ivsr_ffmpeg_plugin/patches/*.patch ./
-RUN for patch_file in $(find -iname "*.patch" | sort -n); do \
-    echo "Applying: ${patch_file}"; \
-    git am --whitespace=fix ${patch_file}; \
-    done
+RUN filterdiff \
+        -x '*/configure' \
+        -x '*/dnn_interface.c' \
+        -x '*/swscale_unscaled.c' \
+        0001-*.patch | \
+        git apply --3way --ignore-whitespace - && \
+    git apply --ignore-whitespace 0004-*.patch && \
+    git add -A && \
+    git apply --3way --whitespace=fix 0002-*.patch && \
+    git apply --3way --whitespace=fix 0003-*.patch && \
+    git apply --3way --whitespace=fix 0005-*.patch && \
+    git apply --3way --whitespace=fix 0006-*.patch && \
+    git apply --3way --whitespace=fix 0007-*.patch
 
 RUN ./configure \
     --enable-gpl \
