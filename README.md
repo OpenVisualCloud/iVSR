@@ -64,7 +64,7 @@ We've also included a `vsr_sample` as a demonstration of its usage.
 In order to support the widely-used media processing solution FFmpeg, we've provided an iVSR SDK plugin to simplify integration.<br>
 This plugin is integrated into FFmpeg's `dnn_processing` filter in the [FFmpeg documentation](https://ffmpeg.org/ffmpeg-filters.html#dnn_005fprocessing-1) in the libavfilter library, serving as a new `ivsr` backend to this filter. The patches provided in this project target **FFmpeg n8.1**.<br>
 
-### 1.3.3 OpenVINO patches and extension
+### 1.3.2 OpenVINO patches and extension
 In [this folder](./ivsr_ov/based_on_openvino_2022.3/patches), you'll find patches for OpenVINO that enable the Enhanced BasicVSR model. These patches utilize OpenVINO's [Custom OpenVINO™ Operations](https://docs.openvino.ai/2024/documentation/openvino-extensibility/custom-openvino-operations.html) feature, which allows users to support models with custom operations not inherently supported by OpenVINO.<br>
 These patches are specifically for OpenVINO 2022.3, meaning the Enhanced BasicVSR model will only work on OpenVINO 2022.3 with these patches applied.<br>
 
@@ -155,11 +155,11 @@ We provide a `build.sh` script to facilitate building the entire project from so
 
 ```bash
 chmod a+x ./build.sh
-./build.sh --ov_version [2022.3|2023.2|2024.5]
+./build.sh --ov_version [2022.3|2023.2|2024.5|2026.1]
 ```
 
 The script accepts the following parameter:
-- `ov_version`: Specifies the OpenVINO version. iVSR supports `2022.3`, `2023.2`, and `2024.5`. Note that running the Enhanced BasicVSR model requires `2022.3`.
+- `ov_version`: Specifies the OpenVINO version. iVSR supports `2022.3`, `2023.2`, `2024.5` and '2026.1'. Note that running the Enhanced BasicVSR model requires `2022.3`.
 
 After the build is complete, set the environment variables. For OpenVINO 2022.3:
 
