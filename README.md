@@ -155,11 +155,11 @@ We provide a `build.sh` script to facilitate building the entire project from so
 
 ```bash
 chmod a+x ./build.sh
-./build.sh --ov_version [2022.3|2023.2|2024.5]
+./build.sh --ov_version [2022.3|2023.2|2024.5|2026.1]
 ```
 
 The script accepts the following parameter:
-- `ov_version`: Specifies the OpenVINO version. iVSR supports `2022.3`, `2023.2`, and `2024.5`. Note that running the Enhanced BasicVSR model requires `2022.3`.
+- `ov_version`: Specifies the OpenVINO version. iVSR supports `2022.3`, `2023.2`, `2024.5` and '2026.1'. Note that running the Enhanced BasicVSR model requires `2022.3`.
 
 After the build is complete, set the environment variables. For OpenVINO 2022.3:
 
