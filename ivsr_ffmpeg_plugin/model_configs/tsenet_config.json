@@ -1,0 +1,19 @@
+{
+  "_comment":               "TSENet 3-frame temporal SR. nif=3/channel_divisor=3: three consecutive frames stacked along the channel axis; window_init_dup=true duplicates the first frame to prime the sliding window. normalize_input=false: raw [0,255] float32 input; normalize_output=true: model outputs [0,1] scaled back to [0,255] by unpack. in_layout NCHW / out_layout NHWC matches the model's actual tensor order.",
+  "name":                   "TSENet",
+  "nif":                    3,
+  "channel_divisor":        3,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "out_layout":              "NHWC",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "sliding",
+  "window_init_dup":        true,
+  "normalize_input":        false,
+  "normalize_output":       true,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}

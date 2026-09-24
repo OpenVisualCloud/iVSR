@@ -1,0 +1,17 @@
+{
+  "_comment": "CustVSR uses single-channel YUV (yuv420p) input/output (Y-plane only). color_format_auto=2 enables the single-channel Y-plane dispatch path so pack_input_window / unpack_output_window handle the luma plane correctly instead of assuming 3-channel RGB.",
+  "name":                   "Custom VSR",
+  "nif":                    1,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "out_order":              "NONE",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        false,
+  "normalize_output":       false,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      2
+}

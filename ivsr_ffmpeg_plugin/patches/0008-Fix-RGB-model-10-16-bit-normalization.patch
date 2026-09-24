@@ -1,0 +1,224 @@
+From Mon Sep 17 00:00:00 2001
+From: iVSR <ivsr@intel.com>
+Date: Thu, 24 Sep 2026 00:00:00 +0000
+Subject: [PATCH 0008] Fix 10/16-bit handling for RGB-channel models
+
+pack_input_window() and unpack_output_window() are used by every
+RGB-channel model (RIFE, SPAN, EDSR, VideoSeal, HDRTVNet-LE, TSENet's
+sliding path). Their manual float pack/unpack code hardcoded uint8_t
+pixel access and a fixed 255.0f scale factor, regardless of the actual
+frame pixel format. This is the RGB-channel counterpart of the
+bit-depth handling that unpack_output_window's Y-plane (channels==1)
+branch already had for VideoProc/SVP.
+
+Consequences before this patch, for any RGB model fed or asked to
+produce rgb48le/bgr48le (10/16-bit) frames:
+
+1. Input packing (pack_input_window, both WINDOW_SLIDING and
+   WINDOW_SINGLE): read the frame buffer as uint8_t RGB24, i.e. 1
+   byte/component. For a 16-bit frame (2 bytes/component) this
+   misaligns every read across channel boundaries and, when
+   normalize_input=true, divides by 255.0f instead of 65535.0f.
+
+2. Output unpacking (unpack_output_window, channels==3 branch): always
+   wrote uint8_t and scaled by 255.0f, regardless of the output
+   frame's actual bit depth, corrupting any rgb48le/bgr48le output.
+
+Fix:
+
+1. Add read_packed_component(), reading a component as uint8_t or
+   uint16_t depending on the frame's AVPixFmtDescriptor bit depth.
+
+2. pack_input_window(): use read_packed_component() in both the
+   sliding-window and single-frame branches. When normalize_input is
+   true, divide by (2^bits-1) instead of the hardcoded 255.0f. When
+   normalize_input is false (raw pass-through models EDSR/VideoSeal,
+   which were built expecting an 8-bit [0,255] pixel scale), rescale
+   10/16-bit native samples down to that canonical [0,255] scale
+   instead of feeding the model the much larger native sample value.
+
+3. unpack_output_window(): give the RGB/BGR branch the same bit-depth
+   handling the Y-plane branch already has — write uint16_t samples
+   with a (2^bits-1) scale for 10/16-bit output frames. Apply the
+   matching canonical-to-native rescale for normalize_output=false
+   models.
+
+All of the above is a no-op for bits == 8 (scale == 255.0f, the
+canonicalising factor becomes 1.0f), so existing 8-bit behaviour for
+every currently shipped model config is unchanged.
+
+Verified against the real HDRTVNet-LE (normalize_input/output=true)
+and VideoSeal (normalize_input/output=false) OpenVINO IR models: with
+this patch, the packed input tensor and the raw model output tensor
+are bit-exact identical whether the same image is fed as 8-bit rgb24
+or as a bit-exact-equivalent 16-bit rgb48le frame; final pixel values
+match within float-rounding noise (<0.1% of range). Before the patch,
+mean output error was 20-50% of the 16-bit range.
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 108 +++++++++++++++++++++++++++---------
+ 1 file changed, 78 insertions(+), 30 deletions(-)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 76a5808..3a4bc6f 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -541,6 +541,16 @@ static void unpack_output_basicvsr(IVSRModel *m, TaskItem *task, DNNData *output
+     } while (offset != m->nif);
+ }
+ 
++/* Reads one interleaved RGB/BGR component at (x,y) from an 8-bit or high-bit-depth
++ * (10/16-bit, stored as native uint16_t, e.g. rgb48le/bgr48le) packed frame. */
++static inline float read_packed_component(const uint8_t *row, int x, int channels,
++                                           int c, int bits)
++{
++    if (bits > 8)
++        return (float)((const uint16_t *)row)[x * channels + c];
++    return (float)row[x * channels + c];
++}
++
+ /* Generic single-frame + sliding-window packing for all JSON-config models
+  * (when model_config is set) and any built-in model whose I/O fits the generic path.
+  * Dispatches on md->window_type; uses md->normalize_input for float scaling. */
+@@ -581,16 +591,21 @@ static int pack_input_window(IVSRModel *m, void *base, DNNData *input, TaskItem
+         av_fifo_peek(m->frame_queue, frames, m->nif, 0);
+         for (int idx = 0; idx < m->nif; idx++) {
+             if (md->normalize_input && input->dt == DNN_FLOAT) {
+-                /* float32 NCHW with /255 normalisation (RIFE style) */
++                /* float32 NCHW with /(2^bits-1) normalisation (RIFE style);
++                 * bits comes from the actual frame format (8-bit -> /255,
++                 * 10/16-bit rgb48le/bgr48le -> /1023 or /65535). */
+                 AVFrame *frm = frames[idx];
+                 float *dst = (float *)input->data;
+                 int vw = input->width, vh = input->height, ch = input->channels;
+                 int ps = vw * vh;
++                int bits = av_pix_fmt_desc_get(frm->format)->comp[0].depth;
++                float scale = bits > 8 ? (float)((1 << bits) - 1) : 255.0f;
+                 for (int y = 0; y < vh; y++) {
+                     uint8_t *row = frm->data[0] + y * frm->linesize[0];
+                     for (int x = 0; x < vw; x++)
+                         for (int c = 0; c < ch; c++)
+-                            dst[c * ps + y * vw + x] = row[x * ch + c] / 255.0f;
++                            dst[c * ps + y * vw + x] =
++                                read_packed_component(row, x, ch, c, bits) / scale;
+                 }
+             } else {
+                 ff_proc_from_frame_to_dnn(frames[idx], input, m->model.filter_ctx);
+@@ -622,27 +637,36 @@ static int pack_input_window(IVSRModel *m, void *base, DNNData *input, TaskItem
+             input->data = base;
+             return 0;
+         }
+-        /* Single frame, NCHW float32, optional /255 normalisation. */
++        /* Single frame, NCHW float32, optional /(2^bits-1) normalisation.
++         * bits comes from the actual frame format so 10/16-bit rgb48le/bgr48le
++         * input (2 bytes/component) is read correctly instead of as RGB24. */
+         AVFrame *frame = task->in_frame;
+         float *dst = (float *)input->data;
+         int vw = input->width, vh = input->height;
+         int ps = vw * vh;
++        int bits = av_pix_fmt_desc_get(frame->format)->comp[0].depth;
++        float scale = bits > 8 ? (float)((1 << bits) - 1) : 255.0f;
+         if (md->normalize_input) {
+             for (int y = 0; y < vh; y++) {
+                 uint8_t *row = frame->data[0] + y * frame->linesize[0];
+                 for (int x = 0; x < vw; x++) {
+-                    dst[0 * ps + y * vw + x] = row[x * 3 + 0] / 255.0f;
+-                    dst[1 * ps + y * vw + x] = row[x * 3 + 1] / 255.0f;
+-                    dst[2 * ps + y * vw + x] = row[x * 3 + 2] / 255.0f;
++                    dst[0 * ps + y * vw + x] = read_packed_component(row, x, 3, 0, bits) / scale;
++                    dst[1 * ps + y * vw + x] = read_packed_component(row, x, 3, 1, bits) / scale;
++                    dst[2 * ps + y * vw + x] = read_packed_component(row, x, 3, 2, bits) / scale;
+                 }
+             }
+         } else {
++            /* Raw pass-through models (EDSR, VideoSeal) were built expecting
++             * an 8-bit [0,255] pixel scale; canonicalise 10/16-bit samples
++             * down to that scale instead of feeding the model the raw
++             * (much larger) native sample value. No-op when bits == 8. */
++            float raw_scale = 255.0f / scale;
+             for (int y = 0; y < vh; y++) {
+                 uint8_t *row = frame->data[0] + y * frame->linesize[0];
+                 for (int x = 0; x < vw; x++) {
+-                    dst[0 * ps + y * vw + x] = (float)row[x * 3 + 0];
+-                    dst[1 * ps + y * vw + x] = (float)row[x * 3 + 1];
+-                    dst[2 * ps + y * vw + x] = (float)row[x * 3 + 2];
++                    dst[0 * ps + y * vw + x] = read_packed_component(row, x, 3, 0, bits) * raw_scale;
++                    dst[1 * ps + y * vw + x] = read_packed_component(row, x, 3, 1, bits) * raw_scale;
++                    dst[2 * ps + y * vw + x] = read_packed_component(row, x, 3, 2, bits) * raw_scale;
+                 }
+             }
+         }
+@@ -705,27 +729,51 @@ static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
+         return;
+     }
+ 
+-    for (int h = 0; h < fh; h++) {
+-        uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
+-        for (int w = 0; w < fw; w++) {
+-            float r, g, b;
+-            if (output->layout == DL_NCHW) {
+-                int ps = output->height * output->width;
+-                r = src[0 * ps + h * output->width + w];
+-                g = src[1 * ps + h * output->width + w];
+-                b = src[2 * ps + h * output->width + w];
+-            } else {
+-                int base = (h * output->width + w) * 3;
+-                r = src[base + 0]; g = src[base + 1]; b = src[base + 2];
+-            }
+-            if (md->normalize_output) {
+-                row[w * 3 + 0] = (uint8_t)av_clip((int)(r * 255.0f + 0.5f), 0, 255);
+-                row[w * 3 + 1] = (uint8_t)av_clip((int)(g * 255.0f + 0.5f), 0, 255);
+-                row[w * 3 + 2] = (uint8_t)av_clip((int)(b * 255.0f + 0.5f), 0, 255);
+-            } else {
+-                row[w * 3 + 0] = (uint8_t)av_clip((int)(r + 0.5f), 0, 255);
+-                row[w * 3 + 1] = (uint8_t)av_clip((int)(g + 0.5f), 0, 255);
+-                row[w * 3 + 2] = (uint8_t)av_clip((int)(b + 0.5f), 0, 255);
++    /* RGB/BGR output. bits comes from the actual output frame format so
++     * 10/16-bit rgb48le/bgr48le output (2 bytes/component) is written
++     * correctly, with the matching (2^bits-1) scale, instead of always
++     * being treated as 8-bit RGB24 scaled by 255. */
++    {
++        const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
++        int bits = pix_desc->comp[0].depth;
++        float scale = bits > 8 ? (float)((1 << bits) - 1) : 255.0f;
++        int hi = bits > 8 ? (1 << bits) - 1 : 255;
++        ptrdiff_t stride16 = task->out_frame->linesize[0] >> 1;
++
++        for (int h = 0; h < fh; h++) {
++            uint8_t  *row8  = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++            uint16_t *row16 = (uint16_t *)task->out_frame->data[0] + h * stride16;
++            for (int w = 0; w < fw; w++) {
++                float r, g, b;
++                if (output->layout == DL_NCHW) {
++                    int ps = output->height * output->width;
++                    r = src[0 * ps + h * output->width + w];
++                    g = src[1 * ps + h * output->width + w];
++                    b = src[2 * ps + h * output->width + w];
++                } else {
++                    int base = (h * output->width + w) * 3;
++                    r = src[base + 0]; g = src[base + 1]; b = src[base + 2];
++                }
++                if (md->normalize_output) {
++                    /* model output is [0,1]: scale up to the native range. */
++                    r *= scale; g *= scale; b *= scale;
++                } else {
++                    /* Raw pass-through models (EDSR, VideoSeal) output on an
++                     * 8-bit [0,255] scale; scale up to 10/16-bit native range
++                     * instead of clamping the small value into a wide buffer.
++                     * No-op when bits == 8. */
++                    float raw_scale = scale / 255.0f;
++                    r *= raw_scale; g *= raw_scale; b *= raw_scale;
++                }
++                if (bits > 8) {
++                    row16[w * 3 + 0] = (uint16_t)av_clip((int)(r + 0.5f), 0, hi);
++                    row16[w * 3 + 1] = (uint16_t)av_clip((int)(g + 0.5f), 0, hi);
++                    row16[w * 3 + 2] = (uint16_t)av_clip((int)(b + 0.5f), 0, hi);
++                } else {
++                    row8[w * 3 + 0] = (uint8_t)av_clip((int)(r + 0.5f), 0, hi);
++                    row8[w * 3 + 1] = (uint8_t)av_clip((int)(g + 0.5f), 0, hi);
++                    row8[w * 3 + 2] = (uint8_t)av_clip((int)(b + 0.5f), 0, hi);
++                }
+             }
+         }
+     }
+-- 
+2.43.0

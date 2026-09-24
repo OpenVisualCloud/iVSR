@@ -1,0 +1,386 @@
+From Mon Sep 17 00:00:00 2001
+From: iVSR <ivsr@intel.com>
+Date: Thu, 16 Jul 2026 00:00:00 +0000
+Subject: [PATCH 0006] Fix correctness bugs in JSON dispatch and nireq>1 segfault
+
+Twelve fixes on top of patch 0005 (six from the original 0006 plus six new):
+
+Original six correctness fixes:
+
+1. Fix row-stride bug in unpack_output_window Y-plane path.
+   src[h * fw + w] used the unpadded frame width as the tensor row stride.
+   When align > 0 (e.g. VideoProc align=64) the tensor width is padded to a
+   multiple of align, so the stride must be output->width, not fw.
+   Fixed inside the shared 8-bit/10-bit paths below.
+
+2. Fix VideoProc 10-bit Y-plane output written as uint8_t.
+   The channels==1 branch always wrote uint8_t and clipped to [0,255].
+   For yuv420p10le the Y plane is uint16_t with values in [0,1023].
+   Writing 8-bit values into a 16-bit stride trashes every other byte.
+   Fix: detect bits > 8 via AVPixFmtDescriptor, write uint16_t using
+   linesize[0]>>1 as the row stride, and scale [0,1] -> [0,2^bits-1].
+
+3. Fix TV-range (MPEG/limited-range) clamping missing for VideoProc.
+   The old hardcoded switch(model_type) path clamped the Y plane to
+   [16,235] (8-bit) or [64,940] (10-bit) when color_range==AVCOL_RANGE_MPEG.
+   The JSON dispatch path had no equivalent, so limited-range sources
+   produced luma values outside the legal range.
+   Both fixes 2 and 3 are gated on name=="VideoProc" (case-insensitive).
+
+4. Fix normalize_input default: 1 -> 0.
+   5 out of 7 shipped models need false (raw [0,255] I/O). The old default
+   of true silently corrupted output for VideoSeal, EDSR, VideoProc, and
+   CustVSR when the field was omitted from a JSON config.
+
+5. Fix normalize_output default: 1 -> 0.
+   Same rationale. Only RIFE, SPAN, and TSENet need normalize_output: true.
+
+6. Fix model_color default and reorder color-format dispatch.
+   When model_color is absent in the JSON and color_format_auto is 0, the
+   SDK received an empty string causing undefined behaviour. Now falls back
+   to "RGB" via a ternary in the else branch -- no heap allocation, no leak.
+   Reorders the if/else chain so color_format_auto is checked first.
+
+Also adds out_layout inheritance: when out_layout is absent from the JSON
+it is defaulted to in_layout. Models whose output layout differs from their
+input layout (e.g. TSENet: in=NCHW, out=NHWC) must still declare both.
+
+Six new fixes for the nireq > 1 segfault:
+
+7. Fix use-after-free race in ff_dnn_free_model_ivsr (primary segfault fix).
+   The old non-blocking drain loop exited as soon as the queue appeared
+   empty.  With nireq > 1 a callback thread can be between inference_done++
+   and ff_safe_queue_push_back at teardown time: the queue is already empty
+   (from the main thread's perspective) but the callback hasn't pushed back
+   yet.  ff_safe_queue_destroy then destroys the mutex while the callback is
+   still holding it, causing a non-deterministic SIGSEGV.
+   Fix: replace the while(size!=0) loop with a blocking for(nireq) loop so
+   teardown waits for every callback to complete push_back before destroying
+   the queue.
+
+8. Cache input tensor descriptor in IVSRModel at init time.
+   fill_model_input_ivsr called ivsr_get_attr(INPUT_TENSOR_DESC) on every
+   frame.  With nireq > 1 this raced with concurrent callback threads that
+   also called ivsr_get_attr(OUTPUT_TENSOR_DESC), potentially corrupting
+   both callers' local tensor_desc_t buffers if the SDK is not re-entrant.
+   Fix: query once at model-load time, store in cached_input_tensor_desc.
+
+9. Cache output tensor descriptor in IVSRModel at init time.
+   Same rationale as fix 8 for the output descriptor.
+   Fix: query once at model-load time, store in cached_output_tensor_desc.
+
+10. Use cached input descriptor in fill_model_input_ivsr.
+    Remove the per-frame ivsr_get_attr call; use cached_input_tensor_desc.
+
+11. Use cached descriptors in infer_completion_callback, get_input_ivsr,
+    and get_output_ivsr.
+    All three functions queried the SDK on every invocation.  Replace with
+    reads from the cached fields populated by fixes 8 and 9.
+
+12. Remove redundant ivsr_get_attr call in get_output_ivsr.
+    Eliminates the last remaining runtime SDK call from the hot path.
+---
+ libavfilter/dnn/dnn_backend_ivsr.c | 160 lines changed (75 insertions, 85 deletions)
+
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 3eea72d..combined 100644
+@@ -63,6 +63,11 @@
+     AVFifo *frame_queue; //input frames queue
+     int sliding_window_frame_num; /* first-frame dup counter for sliding-window models */
+     ModelDesc *dynamic_desc;      /* heap-allocated descriptor for JSON-loaded models */
++    /* Cached tensor descriptors — populated once at init and re-used in every
++     * callback/fill call to avoid concurrent ivsr_get_attr() races under
++     * nireq > 1 (multiple SDK callback threads calling the SDK simultaneously). */
++    tensor_desc_t cached_input_tensor_desc;
++    tensor_desc_t cached_output_tensor_desc;
+ } IVSRModel;
+ 
+ typedef struct IVSRRequestItem {
+@@ -547,13 +552,16 @@
+     }
+ }
+ 
+-/* Generic float32 NCHW output unpack for JSON-loaded models.
+- * Uses md->normalize_output to decide whether to multiply by 255. */
++/* Generic float32 output unpack for JSON-loaded models.
++ * Uses md->normalize_output to decide whether to multiply by 255.
++ * For "VideoProc": single-channel Y-plane path handles 10-bit uint16_t samples
++ * and applies TV-range clamping ([16,235] / [64,940]) when color_range=MPEG. */
+ static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
+ {
+     const ModelDesc *md = get_model_desc(m);
+     const float *src = (const float *)output->data;
+     int fw = task->out_frame->width, fh = task->out_frame->height;
++    int is_videoproc = md->name && !av_strcasecmp(md->name, "VideoProc");
+ 
+     /* Single-channel (Y-plane only) model: write Y plane only.
+      * U/V chroma planes are copied by copy_uv_planes() in vf_dnn_processing.c
+@@ -562,12 +570,36 @@
+      * inference_done++ can be reordered before in_frame reads under -O3,
+      * causing a use-after-free race with the main thread freeing in_frame. */
+     if (output->channels == 1) {
+-        for (int h = 0; h < fh; h++) {
+-            uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
+-            for (int w = 0; w < fw; w++) {
+-                float val = src[h * fw + w];
+-                row[w] = (uint8_t)av_clip(
+-                    (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
++        const AVPixFmtDescriptor *pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
++        int bits = pix_desc->comp[0].depth;
++        int is_tv_range = is_videoproc &&
++                          task->out_frame->color_range == AVCOL_RANGE_MPEG;
++        if (bits > 8) {
++            /* 10-bit (or 16-bit): samples are uint16_t, scale [0,1] -> [0,2^bits-1] */
++            float scale = (float)((1 << bits) - 1);
++            int lo = 0, hi = (1 << bits) - 1;
++            if (is_tv_range && bits == 10) { lo = 64;  hi = 940;  }
++            else if (is_tv_range && bits == 16) { lo = 256; hi = 60160; }
++            ptrdiff_t stride = task->out_frame->linesize[0] >> 1;
++            for (int h = 0; h < fh; h++) {
++                uint16_t *row = (uint16_t *)task->out_frame->data[0] + h * stride;
++                for (int w = 0; w < fw; w++) {
++                    float val = src[h * output->width + w];
++                    row[w] = (uint16_t)av_clip(
++                        (int)((md->normalize_output ? val * scale : val) + 0.5f), lo, hi);
++                }
++            }
++        } else {
++            /* 8-bit: samples are uint8_t */
++            int lo = 0, hi = 255;
++            if (is_tv_range) { lo = 16; hi = 235; }
++            for (int h = 0; h < fh; h++) {
++                uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++                for (int w = 0; w < fw; w++) {
++                    float val = src[h * output->width + w];
++                    row[w] = (uint8_t)av_clip(
++                        (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), lo, hi);
++                }
+             }
+         }
+         return;
+@@ -657,8 +689,8 @@
+     desc->unpack_output     = unpack_output_window;
+     desc->nif_override      = 1;
+     desc->channel_divisor   = 1;
+-    desc->normalize_input   = 1;
+-    desc->normalize_output  = 1;
++    desc->normalize_input   = 0;  /* most models use raw [0,255]; set true only for RIFE/SPAN */
++    desc->normalize_output  = 0;  /* most models output raw [0,255]; set true only for RIFE/SPAN/TSENet */
+     desc->window_type       = WINDOW_SINGLE;
+     desc->out_order         = DCO_RGB;
+ 
+@@ -772,6 +804,9 @@
+         free_dynamic_desc(&desc);
+         return AVERROR(EINVAL);
+     }
++    /* Default out_layout to in_layout when absent (most models share the same layout). */
++    if (!desc->out_layout)
++        desc->out_layout = av_strdup(desc->in_layout);
+ 
+     *out_desc = desc;
+     return 0;
+@@ -792,29 +827,17 @@
+                                  IVSRRequestItem * request)
+ {
+     DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+     DNNData input;
+     LastLevelTaskItem *lltask;
+     TaskItem *task;
+     void *in_data = NULL;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+     int padding_height = 0, padding_width = 0;
+-    tensor_desc_t input_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+-
+-    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+ 
+-    set_dnndata_info(&input, &input_tensor_desc_get);
++    /* Use the cached input tensor descriptor populated at init time.
++     * Calling ivsr_get_attr() here races with concurrent callback threads
++     * that call ivsr_get_attr(OUTPUT_TENSOR_DESC) under nireq > 1. */
++    set_dnndata_info(&input, &ivsr_model->cached_input_tensor_desc);
+     /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
+     {
+         int div = get_model_desc(ivsr_model)->channel_divisor;
+@@ -904,7 +927,6 @@
+ 
+ static void infer_completion_callback(void *args)
+ {
+-    IVSRStatus status;
+     IVSRRequestItem *request = args;
+     LastLevelTaskItem *lltask = request->lltasks[0];
+     TaskItem *task = lltask->task;
+@@ -913,23 +935,12 @@
+     DNNData output;
+     DnnContext *ctx = ivsr_model->ctx;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+-    tensor_desc_t output_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+-
+-    // ivsr_get_attr can only get precision, layout, dimension and shape info
+-    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
+-        return;
+-    }
+ 
+-    set_dnndata_info(&output, &output_tensor_desc_get);
++    /* Use the cached output tensor descriptor populated at init time.
++     * Calling ivsr_get_attr() here from multiple SDK callback threads
++     * simultaneously (nireq > 1) causes a data race that corrupts the
++     * descriptor and leads to a non-deterministic segfault. */
++    set_dnndata_info(&output, &ivsr_model->cached_output_tensor_desc);
+ 
+     output.data = request->out_frames;
+     // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
+@@ -943,7 +954,7 @@
+     const AVPixFmtDescriptor* pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
+     const AVComponentDescriptor* comp_desc = &pix_desc->comp[0];
+     int bits = comp_desc->depth;
+-    av_assert0(request->lltask_count <= output_tensor_desc_get.shape[0]);
++    av_assert0(request->lltask_count <= ivsr_model->cached_output_tensor_desc.shape[0]);
+     av_assert0(request->lltask_count >= 1);
+     for (int i = 0; i < request->lltask_count; ++i) {
+         task = request->lltasks[i]->task;
+@@ -1019,24 +1030,9 @@
+                           const char *input_name)
+ {
+     IVSRModel *ivsr_model = model;
+-    DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+-    tensor_desc_t input_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+ 
+-    status = ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get input dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+-
+-    set_dnndata_info(input, &input_tensor_desc_get);
++    /* Use the cached input tensor descriptor; no SDK call needed. */
++    set_dnndata_info(input, &ivsr_model->cached_input_tensor_desc);
+     /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
+     {
+         int div = get_model_desc(ivsr_model)->channel_divisor;
+@@ -1126,27 +1122,11 @@
+                            const char *output_name, int *output_width,
+                            int *output_height)
+ {
+-    int ret = 0;
+     IVSRModel *ivsr_model = model;
+-    DnnContext *ctx = ivsr_model->ctx;
+-    IVSRStatus status;
+     DNNData output;
+-    tensor_desc_t output_tensor_desc_get = {
+-        .precision = {0},
+-        .layout = {0},
+-        .tensor_color_format = {0},
+-        .model_color_format = {0},
+-        .scale = 0.0,
+-        .dimension = 0,
+-        .shape = {0}};
+ 
+-    status = ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+-    if (status != OK) {
+-        av_log(ctx, AV_LOG_ERROR, "Failed to get output dimensions\n");
+-        return DNN_GENERIC_ERROR;
+-    }
+-
+-    set_dnndata_info(&output, &output_tensor_desc_get);
++    /* Use the cached output tensor descriptor; no SDK call needed. */
++    set_dnndata_info(&output, &ivsr_model->cached_output_tensor_desc);
+     *output_height = output.height;
+     *output_width  = output.width;
+ 
+@@ -1155,7 +1135,7 @@
+         *output_width  = input_width;
+     }
+ 
+-    return ret;
++    return 0;
+ }
+ 
+ // Utility function to create and link config
+@@ -1362,18 +1342,20 @@
+     default:
+         break;
+     }
+-    /* Set model colour format from descriptor. Use color_format_auto for NULL entries. */
++    /* Set model colour format: color_format_auto takes priority; absent model_color defaults to "RGB". */
+     {
+         const ModelDesc *md = get_model_desc(ivsr_model);
+-        if (md->model_color) {
+-            strcpy(input_tensor_desc_set.model_color_format, md->model_color);
+-        } else if (md->color_format_auto == 1) {
++        if (md->color_format_auto == 1) {
+             /* VideoProc-style: auto-detect from pixel format */
+             strcpy(input_tensor_desc_set.model_color_format,
+                    (desc->flags & AV_PIX_FMT_FLAG_RGB) ? "RGB" : "I420_Three_Planes");
+         } else if (md->color_format_auto == 2) {
+             /* CustVSR-style: always YUV */
+             strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
++        } else {
++            /* Use explicit model_color or fall back to "RGB" for standard RGB models. */
++            strcpy(input_tensor_desc_set.model_color_format,
++                   md->model_color ? md->model_color : "RGB");
+         }
+     }
+     config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
+@@ -1449,6 +1431,7 @@
+         av_log(ctx, AV_LOG_ERROR, "Failed to get input tensor description\n");
+         goto err;
+     }
++    ivsr_model->cached_input_tensor_desc = input_tensor_desc_get;
+ 
+     status =
+         ivsr_get_attr(ivsr_model->handle, OUTPUT_TENSOR_DESC, &output_tensor_desc_get);
+@@ -1456,6 +1439,7 @@
+         av_log(ctx, AV_LOG_ERROR, "Failed to get output description\n");
+         goto err;
+     }
++    ivsr_model->cached_output_tensor_desc = output_tensor_desc_get;
+ 
+     ivsr_model->request_queue = ff_safe_queue_create();
+     if (!ivsr_model->request_queue) {
+@@ -1657,7 +1641,13 @@
+         DnnContext *ctx = ivsr_model->ctx;
+         IVSRStatus status;
+ 
+-        while (ff_safe_queue_size(ivsr_model->request_queue) != 0) {
++        /* Drain ALL nireq requests using blocking pop so that every in-flight
++         * async callback has completed its ff_safe_queue_push_back() before we
++         * destroy the queue or any shared data.  The previous non-blocking
++         * size-check loop only waited for requests already in the queue and
++         * could race with callbacks that hadn't pushed back yet, leading to a
++         * use-after-free when the queue's mutex was subsequently destroyed. */
++        for (int i = 0; i < ctx->nireq; i++) {
+             IVSRRequestItem *item =
+                 ff_safe_queue_pop_front(ivsr_model->request_queue);
+             av_freep(&item->in_frames);
+
+-- 
+2.25.1

@@ -1,0 +1,20 @@
+{
+  "_comment":               "RIFE frame interpolation. nif=2/channel_divisor=2: two RGB frames stacked along channel axis; window_init_dup=false: no priming (interpolation starts on frame 2). normalize_input=true: divide by 255 before inference; normalize_output=true: multiply by 255 after inference. align=128: pad H/W to multiples of 128.",
+  "name":                   "RIFE",
+  "nif":                    2,
+  "channel_divisor":        2,
+  "align":                  128,
+  "in_layout":              "NCHW",
+  "in_precision":           "f32",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "sliding",
+  "window_init_dup":        false,
+  "normalize_input":        true,
+  "normalize_output":       true,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}

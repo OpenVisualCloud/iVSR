@@ -1,0 +1,16 @@
+{
+  "_comment":               "SVP/VideoProc Y-channel SR. align=64 pads H/W to multiples of 64 for model reshape. color_format_auto=1 auto-selects I420_Three_Planes for yuv420p input or RGB for rgb24. normalize_input=false: u8 input is passed as-is; the iVSR SDK divides by scale=255 so the model receives [0,1] float. normalize_output=true: model outputs [0,1] float which is multiplied by 255 (8-bit) or 2^bits-1 (10/16-bit) to restore the full pixel range. output_passthrough_dims=true: output H/W are forced to match input H/W (no scale change). TV-range clamping and 10-bit uint16 output are applied automatically by the unpack function when name=VideoProc.",
+  "name":                   "VideoProc",
+  "nif":                    1,
+  "align":                  64,
+  "in_layout":              "NHWC",
+  "out_layout":             "NHWC",
+  "out_precision":          "fp32",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        false,
+  "normalize_output":       true,
+  "output_passthrough_dims": true,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      1
+}

@@ -1,0 +1,1226 @@
+From Mon Sep 17 00:00:00 2001
+From: iVSR <ivsr@intel.com>
+Date: Thu, 15 May 2026 00:00:00 +0000
+Subject: [PATCH 0005] Unified model support: generic JSON config dispatch
+ and model_type-independent path selection
+
+This patch combines the changes previously split across patches 0005-0010.
+It adds all non-BasicVSR model support and the full JSON config dispatch
+system in one self-contained patch on top of patches 0001-0004.
+
+Changes included:
+- RIFE frame-interpolation model (sliding-window, nif=2, float32 [0,1])
+- VideoSeal invisible watermarking (single-frame, float32 [0,255])
+- TSENet temporal SR (sliding-window, nif=3, channel_divisor=3)
+- VideoProc / EDSR / CustVSR via generic NHWC path
+- ModelDesc descriptor table replacing all if/else model-type chains
+- pack_input_window() / unpack_output_window() generic handlers:
+    * SLIDING: normalize_input support (divide uint8 by 255 for RIFE/SPAN)
+    * SINGLE:  ff_proc fallback for non-float input (VideoProc, EDSR)
+    * IN_QUEUE: delegates to pack_input_basicvsr (BasicVSR unchanged)
+- channel_divisor field: divides reported tensor channels so FFmpeg sees
+  standard 3-channel frames (RIFE ÷2, TSENet ÷3)
+- JSON config system (parse_model_config_json): load any ModelDesc at
+  runtime from a .json file — no C changes or recompilation required
+- model_config AVOption: when set, JSON path is used automatically;
+  model_type is ignored (removed CUSTOM=-1 sentinel)
+- model_type enum collapsed to BASICVSR=0 + MODEL_TYPE_NUM; only
+  BasicVSR remains as a built-in (multi-frame out_queue cannot use JSON)
+- unpack_output_window: Y-plane (1-channel) path for VideoProc/SVP/CustVSR;
+  chroma copy removed from callback — unsafe due to inference_done race;
+  vf_dnn_processing.c copy_uv_planes() handles UV on the main thread instead
+- unpack_output_window: RGB48 (16-bit) output support for HDRTVNet++
+- ivsr_model_config.template.json: copy-and-edit starting point
+- ivsr_model_config.schema.json: JSON Schema draft-07 for IDE validation
+
+FFmpeg usage (all non-BasicVSR models):
+  ./ffmpeg -i input.mp4 \
+    -vf "format=rgb24,dnn_processing=dnn_backend=ivsr:\
+  model=mymodel.xml:model_config=../model_configs/mymodel_config.json" \
+    output.mp4
+
+BasicVSR (built-in, no model_config needed):
+  ./ffmpeg -i input.mp4 \
+    -vf "format=rgb24,dnn_processing=dnn_backend=ivsr:\
+  model=basicvsr.xml:model_type=0:nif=3:device=CPU:extension=...:op_xml=..." \
+    output.mp4
+
+Canonical configs for shipped models: ivsr_ffmpeg_plugin/model_configs/
+---
+diff --git a/ivsr_model_config.schema.json b/ivsr_model_config.schema.json
+new file mode 100644
+index 0000000..bd633a2
+--- /dev/null
++++ b/ivsr_model_config.schema.json
+@@ -0,0 +1,84 @@
++{
++  "$schema": "http://json-schema.org/draft-07/schema",
++  "title": "iVSR Model Config",
++  "description": "Descriptor file for iVSR models loaded via model_type=-1. Covers tensor layout, precision, frame count, alignment, window strategy and normalisation.",
++  "type": "object",
++  "required": ["name", "in_layout"],
++  "additionalProperties": true,
++  "properties": {
++    "name": {
++      "type": "string",
++      "description": "Human-readable model label used in log messages"
++    },
++    "nif": {
++      "type": "integer",
++      "minimum": 1,
++      "description": "Number of input frames consumed per inference call (1 = single frame)"
++    },
++    "align": {
++      "type": "integer",
++      "minimum": 0,
++      "description": "Round input width and height up to a multiple of this value (0 = no alignment)"
++    },
++    "in_layout": {
++      "type": "string",
++      "enum": ["NCHW", "NHWC", "NFHWC"],
++      "description": "Input tensor memory layout"
++    },
++    "in_precision": {
++      "type": ["string", "null"],
++      "enum": ["f32", "u8", "u16", null],
++      "description": "Input tensor element type (null = inherit from frame bit-depth)"
++    },
++    "out_layout": {
++      "type": "string",
++      "enum": ["NCHW", "NHWC", "NFHWC"],
++      "description": "Output tensor memory layout"
++    },
++    "out_precision": {
++      "type": ["string", "null"],
++      "enum": ["fp32", "u8", "u16", null],
++      "description": "Output tensor element type (null = default fp32)"
++    },
++    "model_color": {
++      "type": ["string", "null"],
++      "enum": ["RGB", "I420_Three_Planes", null],
++      "description": "Colour space string reported to iVSR SDK. null = determined by color_format_auto"
++    },
++    "out_order": {
++      "type": "string",
++      "enum": ["RGB", "BGR", "NONE"],
++      "description": "Output channel order for the ffmpeg proc helper"
++    },
++    "window_type": {
++      "type": "string",
++      "enum": ["single", "sliding", "in_queue"],
++      "description": "Frame queuing strategy: single (no queue), sliding (N-frame window), in_queue (read nif frames from task queue - BasicVSR style)"
++    },
++    "window_init_dup": {
++      "type": "boolean",
++      "description": "When window_type=sliding: duplicate first frame to prime the queue (TSENet). false = wait for queue to fill (RIFE)"
++    },
++    "normalize_input": {
++      "type": "boolean",
++      "description": "Divide uint8 pixel values by 255 before packing into float32 (RIFE/SPAN). false = raw [0,255] (VideoSeal)"
++    },
++    "normalize_output": {
++      "type": "boolean",
++      "description": "Multiply float32 output by 255 then clip to uint8 (RIFE/SPAN). false = direct round-and-clip (VideoSeal)"
++    },
++    "output_passthrough_dims": {
++      "type": "boolean",
++      "description": "Report output W/H = input W/H regardless of tensor (VideoProc passthrough models)"
++    },
++    "out_precision_depth_derived": {
++      "type": "boolean",
++      "description": "Derive output precision from frame bit depth: u8 for 8-bit, u16 for 10/16-bit (EDSR style)"
++    },
++    "color_format_auto": {
++      "type": "integer",
++      "enum": [0, 1, 2],
++      "description": "0 = use model_color. 1 = VideoProc-auto (RGB vs I420 from pixel format). 2 = CustVSR-auto (always I420)"
++    }
++  }
++}
+diff --git a/ivsr_model_config.template.json b/ivsr_model_config.template.json
+new file mode 100644
+index 0000000..289b066
+--- /dev/null
++++ b/ivsr_model_config.template.json
+@@ -0,0 +1,53 @@
++{
++  "_comment_PURPOSE": "Copy this file to mymodel_config.json and fill in the values below.",
++  "_comment_USAGE":   "Use with: dnn_backend=ivsr:model=mymodel.xml:model_type=-1:model_config=mymodel_config.json",
++  "_comment_VALIDATE":"jsonschema -i mymodel_config.json ivsr_model_config.schema.json",
++
++  "_comment_name":    "Human-readable label used in log messages",
++  "name":             "MyModel",
++
++  "_comment_nif":     "Number of input frames consumed per inference call (1=single frame, 2=RIFE-style, 3=TSENet-style)",
++  "nif":              1,
++
++  "_comment_align":   "Pad input W and H to a multiple of this value before reshaping (0=none, 128 for RIFE, 64 for VideoProc)",
++  "align":            0,
++
++  "_comment_in_layout":   "Tensor layout passed to iVSR SDK: NCHW | NHWC | NFHWC",
++  "in_layout":            "NCHW",
++
++  "_comment_in_precision":"Input element type sent to the SDK: f32 | u8 | u16  (omit or null to inherit from frame bit-depth)",
++  "in_precision":         "f32",
++
++  "_comment_out_layout":  "Output tensor layout: NCHW | NHWC | NFHWC",
++  "out_layout":           "NCHW",
++
++  "_comment_out_precision":"Output element type: fp32 | u8 | u16  (omit or null to use default fp32)",
++  "out_precision":        "fp32",
++
++  "_comment_model_color": "Colour space string sent to the iVSR SDK: RGB | I420_Three_Planes | null (null = no explicit colour space)",
++  "model_color":          "RGB",
++
++  "_comment_out_order":   "Output colour channel order for ff_proc_from_dnn_to_frame: RGB | BGR | NONE",
++  "out_order":            "RGB",
++
++  "_comment_window_type": "Frame queuing strategy: single (one frame, no queue), sliding (N-frame sliding window), in_queue (read nif frames from task queue, BasicVSR-style)",
++  "window_type":          "single",
++
++  "_comment_window_init_dup": "Only relevant when window_type=sliding. Set true to duplicate the first frame to prime the queue (TSENet behaviour). false = wait for the queue to fill naturally (RIFE behaviour).",
++  "window_init_dup":          false,
++
++  "_comment_normalize_input": "true = divide rgb24 uint8 pixel values by 255 before packing into float32 tensor (RIFE/SPAN style input [0,1]). false = pack raw [0,255] values (VideoSeal style).",
++  "normalize_input":           true,
++
++  "_comment_normalize_output": "true = multiply float32 output by 255 then clip to uint8 (RIFE/SPAN style output [0,1] → [0,255]). false = direct round-and-clip, model already outputs [0,255] (VideoSeal style).",
++  "normalize_output":           true,
++
++  "_comment_output_passthrough_dims": "true = report output W/H = input W/H regardless of model output tensor size (VideoProc passthrough models). false = use tensor dimensions.",
++  "output_passthrough_dims":          false,
++
++  "_comment_out_precision_depth_derived": "true = derive output tensor precision from the input frame bit depth: u8 for 8-bit, u16 for 10/16-bit (EDSR style). Overrides out_precision when true.",
++  "out_precision_depth_derived":         false,
++
++  "_comment_color_format_auto": "0 = use model_color string above. 1 = VideoProc-style auto-detect (RGB if input is RGB, I420_Three_Planes otherwise). 2 = CustVSR-style (always I420_Three_Planes).",
++  "color_format_auto":           0
++}
+diff --git a/libavfilter/dnn/dnn_backend_ivsr.c b/libavfilter/dnn/dnn_backend_ivsr.c
+index 0e64c14..563f420 100644
+--- a/libavfilter/dnn/dnn_backend_ivsr.c
++++ b/libavfilter/dnn/dnn_backend_ivsr.c
+@@ -43,15 +43,13 @@
+ #define DNN_MORE_FRAMES FFERRTAG('M','O','R','E')
+ 
+ typedef enum {
+-    UNKNOWN_MODEL = -1,
+-    BASICVSR,
+-    VIDEOPROC,
+-    EDSR,
+-    CUSTVSR,
+-    TSENET,
+-    MODEL_TYPE_NUM
++    BASICVSR =  0,  /* Only built-in model: multi-frame out_queue output cannot
++                     * be expressed in a JSON config. Use model_type=0. */
++    MODEL_TYPE_NUM  /* = 1 */
+ } ModelType;
+ 
++typedef struct ModelDesc ModelDesc; /* forward declaration — defined after AVOptions */
++
+ typedef struct IVSRModel {
+     DNNModel model;
+     DnnContext *ctx;
+@@ -63,6 +61,8 @@ typedef struct IVSRModel {
+     ModelType model_type;
+     int nif; //how many frames in IVSRRequestItem::in_frames
+     AVFifo *frame_queue; //input frames queue
++    int sliding_window_frame_num; /* first-frame dup counter for sliding-window models */
++    ModelDesc *dynamic_desc;      /* heap-allocated descriptor for JSON-loaded models */
+ } IVSRModel;
+ 
+ typedef struct IVSRRequestItem {
+@@ -79,14 +79,121 @@ static const AVOption dnn_ivsr_options[] = {
+     { "batch_size",  "batch size per request, NOT usable for BasicVSR model", OFFSET(batch_size),  AV_OPT_TYPE_INT,    { .i64 = 1 },     1, 1000, FLAGS},
+     { "extension",  "extension lib file full path, usable for BasicVSR model", OFFSET(extension),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+     { "op_xml",  "custom op xml file full path, usable for BasicVSR model", OFFSET(op_xml),  AV_OPT_TYPE_STRING,    { .str = NULL },     0, 0, FLAGS},
+-    { "model_type",  "dnn model type", OFFSET(model_type),  AV_OPT_TYPE_INT,    { .i64 = 0 },     0, MODEL_TYPE_NUM - 1, FLAGS},
++    { "model_type",
++      "0 = BasicVSR built-in (multi-frame out_queue output, no JSON path). "
++      "For all other models, leave model_type at its default and set model_config instead.",
++      OFFSET(model_type), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, MODEL_TYPE_NUM - 1, FLAGS},
+     { "normalize_factor", "normalizing factor(constant) for models that not require input normalization to [0, 1]", OFFSET(normalize_factor), AV_OPT_TYPE_FLOAT, { .dbl = 1.0 }, 1.0, 65535.0, FLAGS},
+     { "num_streams",  "number of execution streams for the throughput mode (now valid only for GPU devices).", OFFSET(num_streams),  AV_OPT_TYPE_INT, { .i64 = 1 }, 1, 256, FLAGS},
++    { "model_config",
++      "Path to a JSON model descriptor (all models except BasicVSR). "
++      "When set, model_type is ignored and all dispatch uses the JSON config. "
++      "Canonical configs: model_configs/{videoproc,edsr,custvsr,tsenet,rife,videoseal}_config.json. "
++      "See ivsr_model_config.template.json for all fields.",
++      OFFSET(model_config), AV_OPT_TYPE_STRING, {.str=NULL}, 0, 0, FLAGS},
+     { NULL }
+ };
+ 
+ #define ALIGNED_SIZE 64
+ 
++/* Frame queuing strategy for JSON-loaded models (Patch 0008). */
++typedef enum {
++    WINDOW_SINGLE,    /* single frame, no queuing (VideoSeal/SPAN style) */
++    WINDOW_SLIDING,   /* N-frame sliding window via frame_queue */
++    WINDOW_IN_QUEUE,  /* read nif frames from task->in_queue (BasicVSR style) */
++} WindowType;
++
++/* ---------------------------------------------------------------------------
++ * ModelDesc — per-model descriptor table
++ *
++ * To add a new model:
++ *   1. Add an enum value to ModelType (above).
++ *   2. Add a row to model_table[] (below) — fill in the static fields.
++ *   3. If the model needs non-generic input packing or output unpacking,
++ *      write static pack_input_<name> / unpack_output_<name> functions
++ *      (see RIFE / VideoSeal below as templates) and point the function
++ *      pointers at them.  If the generic NCHW-float or ff_proc paths work,
++ *      leave the pointers NULL.
++ *
++ * That is the ONLY change needed — no if/else chains anywhere else.
++ * ---------------------------------------------------------------------------
++ *
++ * Field reference:
++ *   name            human-readable label (for log messages)
++ *   nif_override    force nif to this value (0 = use SDK-reported value)
++ *   channel_divisor channels reported to filter = actual_channels / divisor
++ *                   (RIFE has [1,6,H,W] input but each frame is 3-ch → /2;
++ *                    TSENET has 3× stacked frames → /3; others → 1)
++ *   align           input W/H round-up alignment in pixels (0 = none)
++ *   in_layout       tensor layout string for iVSR SDK ("NHWC","NCHW","NFHWC")
++ *   in_precision    tensor element type ("u8","u16","f32"; NULL = depth-derived)
++ *   out_layout      output tensor layout string
++ *   out_precision   output element type (NULL = default "fp32")
++ *   model_color     model colour-space string ("RGB","I420_Three_Planes",NULL)
++ *   out_order       DNNColorOrder for output.order assignment
++ *   pack_input      custom rgb24→tensor function; NULL = generic ff_proc path
++ *   unpack_output   custom tensor→rgb24 function; NULL = generic ff_proc path
++ * ---------------------------------------------------------------------------
++ */
++typedef struct IVSRModel IVSRModel; /* forward decl for function pointer types */
++typedef int  (*PackInputFn)  (IVSRModel *m, void *in_data_base,
++                               DNNData *input, TaskItem *task);
++typedef void (*UnpackOutputFn)(IVSRModel *m, TaskItem *task,
++                               DNNData *output);
++
++typedef struct ModelDesc {
++    const char     *name;
++    int             nif_override;
++    int             channel_divisor;
++    int             align;
++    const char     *in_layout;
++    const char     *in_precision;   /* NULL = derive from bit-depth */
++    const char     *out_layout;
++    const char     *out_precision;  /* NULL = default "fp32" */
++    const char     *model_color;    /* NULL = handled in VIDEOPROC/CUSTVSR branch */
++    DNNColorOrder   out_order;
++    PackInputFn     pack_input;               /* NULL = generic path */
++    UnpackOutputFn  unpack_output;            /* NULL = generic path */
++    /* --- Patch 0007 fields --- */
++    int             out_precision_depth_derived; /* 1 = derive output precision from bit depth (EDSR) */
++    int             output_passthrough_dims;     /* 1 = output W/H = input W/H (VideoProc) */
++    int             color_format_auto;           /* 0 = model_color, 1 = VideoProc-auto, 2 = CustVSR-auto */
++    int             sliding_window_init_dup;     /* 1 = dup first frame to prime queue (TSENet) */
++    /* --- Patch 0008 fields (JSON-config models) --- */
++    WindowType      window_type;             /* frame queuing strategy */
++    int             normalize_input;         /* 1 = divide uint8 by 255 before packing */
++    int             normalize_output;        /* 1 = multiply float32 by 255 before clipping to uint8 */
++} ModelDesc;
++
++/* ---- forward declarations for the per-model I/O functions ---- */
++static int  pack_input_basicvsr   (IVSRModel *m, void *base, DNNData *in, TaskItem *t);
++static void unpack_output_basicvsr(IVSRModel *m, TaskItem *t, DNNData *out);
++/* Generic window-based pack/unpack — used by all JSON-config models (model_config set)
++ * and any future built-in models whose I/O fits the generic path. */
++static int  pack_input_window     (IVSRModel *m, void *base, DNNData *in, TaskItem *t);
++static void unpack_output_window  (IVSRModel *m, TaskItem *t, DNNData *out);
++
++/* ---- The descriptor table ----
++ * Only BasicVSR lives here because its multi-frame out_queue output requires
++ * dedicated C functions that cannot be expressed in a JSON config.
++ * All other models: omit model_type and set model_config=<path>.json instead.
++ * Canonical configs: model_configs/{videoproc,edsr,custvsr,tsenet,rife,videoseal}_config.json
++ * -------------------------------------------------------------------- */
++static const ModelDesc model_table[] = {
++    /* [BASICVSR] */ { "BasicVSR", 0, 1, 32, "NFHWC", NULL, "NFHWC", NULL, "RGB", DCO_RGB,
++                       pack_input_basicvsr, unpack_output_basicvsr },
++};
++av_unused static void model_table_size_check(void) {
++    /* Compile-time assert: table has exactly MODEL_TYPE_NUM entries */
++    typedef char model_table_wrong_size[(sizeof(model_table)/sizeof(model_table[0]) == MODEL_TYPE_NUM) ? 1 : -1];
++}
++
++/* Return the active model descriptor: dynamic (JSON) or built-in table. */
++static inline const ModelDesc *get_model_desc(const IVSRModel *m)
++{
++    return m->dynamic_desc ? m->dynamic_desc : &model_table[m->model_type];
++}
++
+ static int get_datatype_size(DNNDataType dt)
+ {
+     switch (dt) {
+@@ -264,6 +371,417 @@ static void set_dnndata_info(DNNData *dnn_data, const tensor_desc_t* tensor) {
+     }
+ }
+ 
++/* ---------------------------------------------------------------------------
++ * Per-model input packing and output unpacking functions
++ *
++ * Signature:
++ *   pack_input   – returns 0 on success, DNN_MORE_FRAMES, or AVERROR(*).
++ *                  Sets input->data back to base before returning on success.
++ *   unpack_output – writes directly into task->out_frame->data[0].
++ *
++ * Generic path (NULL function pointer): ff_proc_from_frame_to_dnn /
++ * ff_proc_from_dnn_to_frame with optional NCHW↔NHWC conversion.
++ * ---------------------------------------------------------------------------
++ */
++
++/* BasicVSR: read nif frames from task->in_queue. */
++static int pack_input_basicvsr(IVSRModel *m, void *base, DNNData *input, TaskItem *task)
++{
++    DnnContext *ctx = m->ctx;
++    AVFrame *tmp_frame;
++    int read_frame_num = 0;
++
++    for (int j = 0; j < m->nif; j++) {
++        if (av_fifo_can_read(task->in_queue)) {
++            av_fifo_read(task->in_queue, &tmp_frame, 1);
++            ff_proc_from_frame_to_dnn(tmp_frame, input, m->model.filter_ctx);
++            if (input->channels != 1 && input->layout == DL_NONE)
++                convert_nhwc_to_nchw(input->data, 1, input->channels,
++                                     input->height, input->width, input->dt);
++            input->data += input->height * input->width *
++                           input->channels * get_datatype_size(input->dt);
++            read_frame_num++;
++        }
++    }
++    input->data = base;
++    if (read_frame_num < m->nif)
++        av_log(ctx, AV_LOG_ERROR,
++               "Read frame number is %d less than the model requirement %d!!!\n",
++               read_frame_num, m->nif);
++    return 0;
++}
++
++/* BasicVSR: multi-frame output — iterate over task->out_queue. */
++static void unpack_output_basicvsr(IVSRModel *m, TaskItem *task, DNNData *output)
++{
++    int offset = 0;
++    AVFrame *tmp_frame;
++
++    do {
++        int ret = av_fifo_peek(task->out_queue, &tmp_frame, 1, offset);
++        if (ret == 0) {
++            if (output->channels != 1 && output->layout == DL_NONE)
++                convert_nchw_to_nhwc(output->data, 1, output->channels,
++                                     output->height, output->width, output->dt);
++            ff_proc_from_dnn_to_frame(tmp_frame, output, &m->model.filter_ctx);
++            if (tmp_frame->color_range == AVCOL_RANGE_MPEG && output->channels == 1) {
++                uint8_t min_x = 16, max_x = 235;
++                for (int index = 0; index < tmp_frame->height * tmp_frame->linesize[0]; ++index)
++                    tmp_frame->data[0][index] = (uint8_t)clamp(tmp_frame->data[0][index], min_x, max_x);
++            }
++            output->data += output->height * output->width *
++                            output->channels * get_datatype_size(output->dt);
++        }
++        offset++;
++    } while (offset != m->nif);
++}
++
++/* Generic single-frame + sliding-window packing for all JSON-config models
++ * (when model_config is set) and any built-in model whose I/O fits the generic path.
++ * Dispatches on md->window_type; uses md->normalize_input for float scaling. */
++static int pack_input_window(IVSRModel *m, void *base, DNNData *input, TaskItem *task)
++{
++    const ModelDesc *md = get_model_desc(m);
++
++    switch (md->window_type) {
++    case WINDOW_IN_QUEUE:
++        return pack_input_basicvsr(m, base, input, task);
++
++    case WINDOW_SLIDING: {
++        AVFrame *tmp = av_frame_alloc();
++        if (!tmp) return AVERROR(ENOMEM);
++        if (av_frame_ref(tmp, task->in_frame) < 0) {
++            av_frame_free(&tmp);
++            return AVERROR(ENOMEM);
++        }
++        av_fifo_write(m->frame_queue, &tmp, 1);
++
++        if (md->sliding_window_init_dup && m->sliding_window_frame_num == 0) {
++            tmp = av_frame_alloc();
++            if (!tmp) return AVERROR(ENOMEM);
++            if (av_frame_ref(tmp, task->in_frame) < 0) {
++                av_frame_free(&tmp);
++                return AVERROR(ENOMEM);
++            }
++            av_fifo_write(m->frame_queue, &tmp, 1);
++            m->sliding_window_frame_num++;
++        }
++
++        if (av_fifo_can_read(m->frame_queue) < (size_t)m->nif)
++            return DNN_MORE_FRAMES;
++
++        av_assert0(av_fifo_can_read(m->frame_queue) == (size_t)m->nif);
++        AVFrame **frames = av_mallocz(sizeof(AVFrame *) * m->nif);
++        if (!frames) return AVERROR(ENOMEM);
++        av_fifo_peek(m->frame_queue, frames, m->nif, 0);
++        for (int idx = 0; idx < m->nif; idx++) {
++            if (md->normalize_input && input->dt == DNN_FLOAT) {
++                /* float32 NCHW with /255 normalisation (RIFE style) */
++                AVFrame *frm = frames[idx];
++                float *dst = (float *)input->data;
++                int vw = input->width, vh = input->height, ch = input->channels;
++                int ps = vw * vh;
++                for (int y = 0; y < vh; y++) {
++                    uint8_t *row = frm->data[0] + y * frm->linesize[0];
++                    for (int x = 0; x < vw; x++)
++                        for (int c = 0; c < ch; c++)
++                            dst[c * ps + y * vw + x] = row[x * ch + c] / 255.0f;
++                }
++            } else {
++                ff_proc_from_frame_to_dnn(frames[idx], input, m->model.filter_ctx);
++                if (input->channels != 1 && input->layout == DL_NONE)
++                    convert_nhwc_to_nchw(input->data, 1, input->channels,
++                                         input->height, input->width, input->dt);
++            }
++            input->data += (size_t)input->height * input->width *
++                           input->channels * get_datatype_size(input->dt);
++        }
++        input->data = base;
++        av_freep(&frames);
++        av_fifo_read(m->frame_queue, &tmp, 1);
++        av_frame_unref(tmp);
++        av_frame_free(&tmp);
++        return 0;
++    }
++
++    case WINDOW_SINGLE:
++    default: {
++        /* For u8/u16 inputs, fall back to the generic ff_proc path.
++         * This covers VideoProc, EDSR, CustVSR and any JSON model whose
++         * in_precision is depth-derived (NULL in descriptor). */
++        if (input->dt != DNN_FLOAT) {
++            ff_proc_from_frame_to_dnn(task->in_frame, input, m->model.filter_ctx);
++            if (input->channels != 1 && input->layout == DL_NONE)
++                convert_nhwc_to_nchw(input->data, 1, input->channels,
++                                     input->height, input->width, input->dt);
++            input->data = base;
++            return 0;
++        }
++        /* Single frame, NCHW float32, optional /255 normalisation. */
++        AVFrame *frame = task->in_frame;
++        float *dst = (float *)input->data;
++        int vw = input->width, vh = input->height;
++        int ps = vw * vh;
++        if (md->normalize_input) {
++            for (int y = 0; y < vh; y++) {
++                uint8_t *row = frame->data[0] + y * frame->linesize[0];
++                for (int x = 0; x < vw; x++) {
++                    dst[0 * ps + y * vw + x] = row[x * 3 + 0] / 255.0f;
++                    dst[1 * ps + y * vw + x] = row[x * 3 + 1] / 255.0f;
++                    dst[2 * ps + y * vw + x] = row[x * 3 + 2] / 255.0f;
++                }
++            }
++        } else {
++            for (int y = 0; y < vh; y++) {
++                uint8_t *row = frame->data[0] + y * frame->linesize[0];
++                for (int x = 0; x < vw; x++) {
++                    dst[0 * ps + y * vw + x] = (float)row[x * 3 + 0];
++                    dst[1 * ps + y * vw + x] = (float)row[x * 3 + 1];
++                    dst[2 * ps + y * vw + x] = (float)row[x * 3 + 2];
++                }
++            }
++        }
++        input->data = base;
++        return 0;
++    }
++    }
++}
++
++/* Generic float32 NCHW output unpack for JSON-loaded models.
++ * Uses md->normalize_output to decide whether to multiply by 255. */
++static void unpack_output_window(IVSRModel *m, TaskItem *task, DNNData *output)
++{
++    const ModelDesc *md = get_model_desc(m);
++    const float *src = (const float *)output->data;
++    int fw = task->out_frame->width, fh = task->out_frame->height;
++
++    /* Single-channel (Y-plane only) model: write Y plane only.
++     * U/V chroma planes are copied by copy_uv_planes() in vf_dnn_processing.c
++     * after ff_dnn_get_result() returns, so no chroma copy is needed here.
++     * Copying chroma from task->in_frame inside this callback is unsafe:
++     * inference_done++ can be reordered before in_frame reads under -O3,
++     * causing a use-after-free race with the main thread freeing in_frame. */
++    if (output->channels == 1) {
++        for (int h = 0; h < fh; h++) {
++            uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++            for (int w = 0; w < fw; w++) {
++                float val = src[h * fw + w];
++                row[w] = (uint8_t)av_clip(
++                    (int)((md->normalize_output ? val * 255.0f : val) + 0.5f), 0, 255);
++            }
++        }
++        return;
++    }
++
++    for (int h = 0; h < fh; h++) {
++        uint8_t *row = task->out_frame->data[0] + h * task->out_frame->linesize[0];
++        for (int w = 0; w < fw; w++) {
++            float r, g, b;
++            if (output->layout == DL_NCHW) {
++                int ps = output->height * output->width;
++                r = src[0 * ps + h * output->width + w];
++                g = src[1 * ps + h * output->width + w];
++                b = src[2 * ps + h * output->width + w];
++            } else {
++                int base = (h * output->width + w) * 3;
++                r = src[base + 0]; g = src[base + 1]; b = src[base + 2];
++            }
++            if (md->normalize_output) {
++                row[w * 3 + 0] = (uint8_t)av_clip((int)(r * 255.0f + 0.5f), 0, 255);
++                row[w * 3 + 1] = (uint8_t)av_clip((int)(g * 255.0f + 0.5f), 0, 255);
++                row[w * 3 + 2] = (uint8_t)av_clip((int)(b * 255.0f + 0.5f), 0, 255);
++            } else {
++                row[w * 3 + 0] = (uint8_t)av_clip((int)(r + 0.5f), 0, 255);
++                row[w * 3 + 1] = (uint8_t)av_clip((int)(g + 0.5f), 0, 255);
++                row[w * 3 + 2] = (uint8_t)av_clip((int)(b + 0.5f), 0, 255);
++            }
++        }
++    }
++}
++
++/* Free all heap-allocated strings in a dynamic ModelDesc, then the struct itself. */
++static void free_dynamic_desc(ModelDesc **pp)
++{
++    if (!pp || !*pp) return;
++    ModelDesc *d = *pp;
++    /* Cast away const: these strings were av_strdup'd by parse_model_config_json */
++    av_freep((void *)&d->name);
++    av_freep((void *)&d->in_layout);
++    av_freep((void *)&d->in_precision);
++    av_freep((void *)&d->out_layout);
++    av_freep((void *)&d->out_precision);
++    av_freep((void *)&d->model_color);
++    av_freep(pp);
++}
++
++/* ---------------------------------------------------------------------------
++ * Minimal flat-JSON parser for iVSR model config files.
++ * Handles string, integer, and boolean values in a flat object.
++ * Keys starting with '_' (comment markers) are silently ignored.
++ * Returns 0 on success, negative AVERROR on failure.
++ * ---------------------------------------------------------------------------
++ */
++static int parse_model_config_json(DnnContext *ctx, const char *path, ModelDesc **out_desc)
++{
++    AVIOContext *pb = NULL;
++    int64_t file_size;
++    char *buf = NULL;
++    ModelDesc *desc;
++    int ret = 0;
++
++    ret = avio_open(&pb, path, AVIO_FLAG_READ);
++    if (ret < 0) {
++        av_log(ctx, AV_LOG_ERROR, "model_config: cannot open '%s': %d\n", path, ret);
++        return ret;
++    }
++    file_size = avio_size(pb);
++    if (file_size <= 0 || file_size > 65536) {
++        av_log(ctx, AV_LOG_ERROR, "model_config: invalid file size %" PRId64 "\n", file_size);
++        avio_closep(&pb);
++        return AVERROR(EINVAL);
++    }
++    buf = av_malloc(file_size + 1);
++    if (!buf) { avio_closep(&pb); return AVERROR(ENOMEM); }
++    if (avio_read(pb, (unsigned char *)buf, (int)file_size) != (int)file_size) {
++        av_log(ctx, AV_LOG_ERROR, "model_config: read error\n");
++        av_freep(&buf); avio_closep(&pb); return AVERROR(EIO);
++    }
++    buf[file_size] = '\0';
++    avio_closep(&pb);
++
++    desc = av_mallocz(sizeof(ModelDesc));
++    if (!desc) { av_freep(&buf); return AVERROR(ENOMEM); }
++
++    /* Set defaults */
++    desc->pack_input        = pack_input_window;
++    desc->unpack_output     = unpack_output_window;
++    desc->nif_override      = 1;
++    desc->channel_divisor   = 1;
++    desc->normalize_input   = 1;
++    desc->normalize_output  = 1;
++    desc->window_type       = WINDOW_SINGLE;
++    desc->out_order         = DCO_RGB;
++
++    /* Single-pass scan: find "key": value pairs */
++    const char *p = buf;
++    while (*p) {
++        /* Find opening quote of a key */
++        while (*p && *p != '"') p++;
++        if (!*p) break;
++        p++; /* skip " */
++
++        const char *key_start = p;
++        while (*p && *p != '"') p++;
++        if (!*p) break;
++        int key_len = (int)(p - key_start);
++        p++; /* skip closing " */
++
++        /* Skip whitespace + ':' */
++        while (*p && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r' || *p == ':')) p++;
++        if (!*p) break;
++
++        /* Silently skip comment keys (_comment_*, etc.) */
++        if (key_len > 0 && key_start[0] == '_') {
++            if (*p == '"') {
++                p++;
++                while (*p && *p != '"') { if (*p == '\\') p++; p++; }
++                if (*p) p++;
++            } else {
++                while (*p && *p != ',' && *p != '}') p++;
++            }
++            continue;
++        }
++
++#define MKEY(k) (key_len == (int)(sizeof(k)-1) && !av_strncasecmp(key_start, k, key_len))
++
++        if (*p == '"') {
++            /* String value */
++            p++;
++            const char *vs = p;
++            while (*p && *p != '"') { if (*p == '\\') p++; p++; }
++            int vl = (int)(p - vs);
++            if (*p) p++;
++            char val[256] = {0};
++            if (vl >= (int)sizeof(val)) vl = sizeof(val) - 1;
++            memcpy(val, vs, vl);
++
++            if      (MKEY("name"))         desc->name         = av_strdup(val);
++            else if (MKEY("in_layout"))    desc->in_layout    = av_strdup(val);
++            else if (MKEY("in_precision")) desc->in_precision = av_strdup(val);
++            else if (MKEY("out_layout"))   desc->out_layout   = av_strdup(val);
++            else if (MKEY("out_precision"))desc->out_precision= av_strdup(val);
++            else if (MKEY("model_color"))  desc->model_color  = av_strdup(val);
++            else if (MKEY("out_order")) {
++                if      (!av_strcasecmp(val, "RGB")) desc->out_order = DCO_RGB;
++                else if (!av_strcasecmp(val, "BGR")) desc->out_order = DCO_BGR;
++                else                                  desc->out_order = DCO_NONE;
++            } else if (MKEY("window_type")) {
++                if      (!av_strcasecmp(val, "sliding"))   desc->window_type = WINDOW_SLIDING;
++                else if (!av_strcasecmp(val, "in_queue"))  desc->window_type = WINDOW_IN_QUEUE;
++                else                                        desc->window_type = WINDOW_SINGLE;
++            } else {
++                av_log(ctx, AV_LOG_WARNING,
++                       "model_config: unknown string key '%.*s'\n", key_len, key_start);
++            }
++        } else {
++            /* Numeric or boolean value — read until delimiter */
++            const char *vs = p;
++            while (*p && *p != ',' && *p != '}' && *p != '\n' && *p != '\r') p++;
++            int vl = (int)(p - vs);
++            while (vl > 0 && (vs[vl-1]==' '||vs[vl-1]=='\t')) vl--;
++            char val[64] = {0};
++            if (vl >= (int)sizeof(val)) vl = sizeof(val) - 1;
++            memcpy(val, vs, vl);
++
++            /* Parse integer manually (avoid stdlib dependency) */
++            int ival = 0, sign = 1;
++            const char *ip = val;
++            while (*ip == ' ') ip++;
++            if (*ip == '-') { sign = -1; ip++; }
++            while (*ip >= '0' && *ip <= '9') { ival = ival * 10 + (*ip - '0'); ip++; }
++            ival *= sign;
++            int bval = (!av_strcasecmp(val, "true") || ival != 0) ? 1 : 0;
++
++            if      (MKEY("nif"))                          desc->nif_override              = ival;
++            else if (MKEY("align"))                        desc->align                     = ival;
++            else if (MKEY("channel_divisor"))              desc->channel_divisor           = (ival > 1 ? ival : 1);
++            else if (MKEY("color_format_auto"))            desc->color_format_auto         = ival;
++            else if (MKEY("normalize_input"))              desc->normalize_input           = bval;
++            else if (MKEY("normalize_output"))             desc->normalize_output          = bval;
++            else if (MKEY("output_passthrough_dims"))      desc->output_passthrough_dims   = bval;
++            else if (MKEY("out_precision_depth_derived"))  desc->out_precision_depth_derived = bval;
++            else if (MKEY("window_init_dup"))              desc->sliding_window_init_dup   = bval;
++            else {
++                av_log(ctx, AV_LOG_WARNING,
++                       "model_config: unknown key '%.*s'\n", key_len, key_start);
++            }
++        }
++#undef MKEY
++    }
++
++    av_freep(&buf);
++
++    /* Validate required fields */
++    if (!desc->name) {
++        av_log(ctx, AV_LOG_ERROR, "model_config: required field 'name' missing in '%s'\n", path);
++        free_dynamic_desc(&desc);
++        return AVERROR(EINVAL);
++    }
++    if (!desc->in_layout) {
++        av_log(ctx, AV_LOG_ERROR, "model_config: required field 'in_layout' missing in '%s'\n", path);
++        free_dynamic_desc(&desc);
++        return AVERROR(EINVAL);
++    }
++
++    *out_desc = desc;
++    return 0;
++}
++
++/* ---------------------------------------------------------------------------
++ * End of per-model I/O functions
++ * ---------------------------------------------------------------------------
++ */
++
+ /* returns
+  *     DNN_GENERIC_ERROR,
+  *     DNN_MORE_FRAMES - waiting for more input frames,
+@@ -278,7 +777,6 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
+     DNNData input;
+     LastLevelTaskItem *lltask;
+     TaskItem *task;
+-    AVFrame *tmp_frame = NULL;
+     void *in_data = NULL;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+     int padding_height = 0, padding_width = 0;
+@@ -298,9 +796,13 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
+     }
+ 
+     set_dnndata_info(&input, &input_tensor_desc_get);
+-    if (ivsr_model->model_type == TSENET) {
+-        input.dims[dnn_get_channel_idx_by_layout(input.layout)] /= 3;
+-        input.channels = input.channels / 3;
++    /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
++    {
++        int div = get_model_desc(ivsr_model)->channel_divisor;
++        if (div > 1) {
++            input.dims[dnn_get_channel_idx_by_layout(input.layout)] /= div;
++            input.channels /= div;
++        }
+     }
+ 
+     input.data = request->in_frames;
+@@ -346,86 +848,24 @@ static int fill_model_input_ivsr(IVSRModel * ivsr_model,
+                     }
+                     input.data = in_data;
+                 }
+-                if (ivsr_model->model_type == BASICVSR && ivsr_model->nif != 1) {
+-                    int read_frame_num = 0;
+-                    for (int j = 0; j < ivsr_model->nif; j++) {
+-                        if (av_fifo_can_read(task->in_queue)) {
+-                            av_fifo_read(task->in_queue, &tmp_frame, 1);
+-                            ff_proc_from_frame_to_dnn(tmp_frame, &input,
+-                                                      ivsr_model->model.filter_ctx);
+-                            // convert buffer from NHWC to NCHW when C != 1
+-                            if (input.channels != 1 && input.layout == DL_NONE )
+-                                convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
+-                            input.data +=
+-                                input.height * input.width *
+-                                input.channels * get_datatype_size(input.dt);
+-                            read_frame_num++;
+-                        }
+-                    }
+-                    input.data = in_data;
+-                    if (read_frame_num < ivsr_model->nif)
+-                        av_log(ctx, AV_LOG_ERROR,
+-                               "Read frame number is %d less than the model requirement %d!!!\n",
+-                               read_frame_num, ivsr_model->nif);
+-                } else if (ivsr_model->model_type == TSENET) {
+-                    //1. copy the input_frame(ref the buffer) and put into ivsr_model->fame_queue
+-                    tmp_frame = av_frame_alloc();
+-                    if(av_frame_ref(tmp_frame, task->in_frame) < 0) {
+-                        return AVERROR(ENOMEM);
+-                    }
+-
+-                    av_fifo_write(ivsr_model->frame_queue, &tmp_frame, 1);
+-                    static int frame_num = 0;
+-                    if (frame_num == 0) {
+-                        //For the first pic in the stream
+-                        tmp_frame = av_frame_alloc();
+-                        if(av_frame_ref(tmp_frame, task->in_frame) < 0) {
+-                            return AVERROR(ENOMEM);
+-                        }
+-                        av_fifo_write(ivsr_model->frame_queue, &tmp_frame, 1);
+-                        frame_num++;
+-                    }
+-                    //2. check if queue size is >= nif
+-                    if (av_fifo_can_read(ivsr_model->frame_queue) >= ivsr_model->nif) {
+-                        //2.1 prepare dnn data into request
+-                        av_assert0(av_fifo_can_read(ivsr_model->frame_queue) == ivsr_model->nif);
+-                        AVFrame **input_frames = av_mallocz(sizeof(AVFrame *) * ivsr_model->nif);
+-                        av_fifo_peek(ivsr_model->frame_queue, input_frames, ivsr_model->nif, 0);
+-                        for (int idx = 0; idx < ivsr_model->nif; idx++) {
+-                            //INFO: the 3 frames in frame_queue are: (N-2)th, (N-1)th, (N)th
+-                            ff_proc_from_frame_to_dnn(input_frames[idx], &input, ivsr_model->model.filter_ctx);
+-                            //NHWC->NCHW was processed in ff_proc_from_frame_to_dnn() if input.layout is set
+-                            if (input.channels != 1 && input.layout == DL_NONE )
+-                                convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
+-                            input.data += input.height * input.width * input.channels * get_datatype_size(input.dt);
+-                        }
+-                        input.data = in_data;
+-                        //pop the (N-2)th frame from frame_queue and free it
+-                        av_fifo_read(ivsr_model->frame_queue, &tmp_frame, 1);
+-                        av_frame_unref(tmp_frame);
+-                        av_frame_free(&tmp_frame);
+-                        // INFO: for the last frame, peek_back and pop_front get the same frame, so don't have to handle EOS specifically
+-                    } else {
+-                        return DNN_MORE_FRAMES;
+-                    }
++                /* ---- Input packing: table-driven --------------------------------- */
++                if (get_model_desc(ivsr_model)->pack_input != NULL) {
++                    /* Delegate to per-model packing function. */
++                    int ret = get_model_desc(ivsr_model)->pack_input(
++                                    ivsr_model, in_data, &input, task);
++                    if (ret != 0)
++                        return ret;
+                 } else {
+-                    // ff_proc_from_frame_to_dnn will perform normalization by calling
+-                    // uint_y_to_float_y_wrapper in swscale_unscaled.c
+-                    // So, for the inputs do not need normalization, normalization facotr should be multiplied back.
+-                    // Same to ff_proc_from_dnn_to_frame.
++                    /* Generic path: ff_proc_from_frame_to_dnn + optional NCHW conversion. */
+                     ff_proc_from_frame_to_dnn(task->in_frame, &input,
+                                               ivsr_model->model.filter_ctx);
+-                    if (input.channels != 1 && (input.layout == DL_NONE)) {
++                    if (input.channels != 1 && input.layout == DL_NONE)
+                         convert_nhwc_to_nchw(input.data, 1, input.channels, input.height, input.width, input.dt);
+-                    }
+-
+                     if (normalize_factor != 1 && input.dt == DNN_FLOAT &&
+                         (fabsf(input.scale - 1.0f) > 1e-6f || fabsf(input.scale) < 1e-6f)) {
+-                        // do not need to covert buffer from NHWC to NCHW if the channels is 1, only need to mulitple normalize_factor
+                         #pragma omp parallel for
+-                        for (int pos = 0; pos < input.height * input.width * input.channels; pos++) {
+-                            ((float*)input.data)[pos] = ((float*)input.data)[pos] * normalize_factor;
+-                        }
++                        for (int pos = 0; pos < input.height * input.width * input.channels; pos++)
++                            ((float*)input.data)[pos] *= normalize_factor;
+                     }
+                 }
+             }
+@@ -453,8 +893,6 @@ static void infer_completion_callback(void *args)
+     SafeQueue *requestq = ivsr_model->request_queue;
+     DNNData output;
+     DnnContext *ctx = ivsr_model->ctx;
+-    AVFrame *tmp_frame = NULL;
+-    int offset = 0;
+     float normalize_factor = ctx->ivsr_option.normalize_factor;
+     tensor_desc_t output_tensor_desc_get = {
+         .precision = {0},
+@@ -476,23 +914,12 @@ static void infer_completion_callback(void *args)
+ 
+     output.data = request->out_frames;
+     // Set output mean/scale to meet the logistics in func ff_proc_from_dnn_to_frame() @dnn_io_proc.c
+     // For *passthrough* cases, the OV backend can help to do the normalization.
+     // FIXME: Apt to make mistakes when changes are made here!
+     output.mean     = 0.0f;
+     output.scale    = output.dt == DNN_FLOAT ? 0.0f : 1.0f;
+-    // set order based on model type
+-    switch (ivsr_model->model_type)
+-    {
+-    case BASICVSR:
+-    case VIDEOPROC:
+-    case EDSR:
+-    case TSENET:
+-        output.order = DCO_RGB;
+-        break;
+-    default:
+-        output.order = DCO_NONE;
+-        break;
+-    }
++    /* output.order from descriptor table */
++    output.order = get_model_desc(ivsr_model)->out_order;
+ 
+     const AVPixFmtDescriptor* pix_desc = av_pix_fmt_desc_get(task->out_frame->format);
+     const AVComponentDescriptor* comp_desc = &pix_desc->comp[0];
+@@ -507,70 +935,39 @@ static void infer_completion_callback(void *args)
+                                                    &output,
+                                                    ivsr_model->model.filter_ctx);
+             } else {
+-                if (ivsr_model->model_type == BASICVSR && ivsr_model->nif != 1) {
+-                    do {
+-                        int ret =
+-                            av_fifo_peek(task->out_queue, &tmp_frame, 1,
+-                                         offset);
+-                        if (ret == 0) {
+-                            if (output.channels != 1 && output.layout == DL_NONE) {
+-                                convert_nchw_to_nhwc(output.data, 1, output.channels, output.height, output.width, output.dt);
+-                            }
+-                            ff_proc_from_dnn_to_frame(tmp_frame, &output,
+-                                                      &ivsr_model->model.filter_ctx);
+-                            // clamp output to [16, 235] range for Y plane when color range of output is TV range,
+-                            // assume model only process Y plane when output.channels = 1. AVCOL_RANGE_MPEG is mean tv range.
+-                            if (tmp_frame->color_range == AVCOL_RANGE_MPEG && output.channels == 1) {
+-                                uint8_t min_x = 16, max_x = 235;
+-                                for (int index = 0; index < tmp_frame->height * tmp_frame->linesize[0]; ++index) {
+-                                    uint8_t value = tmp_frame->data[0][index];
+-                                    tmp_frame->data[0][index] = (uint8_t)clamp(tmp_frame->data[0][index], min_x, max_x);
+-                                }
+-                            }
+-                            output.data +=
+-                                output.height * output.width *
+-                                output.channels * get_datatype_size(output.dt);
+-                        }
+-                        offset++;
+-                    } while (offset != ivsr_model->nif);
++                /* ---- Output unpacking: table-driven --------------------------- */
++                if (get_model_desc(ivsr_model)->unpack_output != NULL) {
++                    /* Custom unpacking (BASICVSR, RIFE, VideoSeal, etc.). */
++                    get_model_desc(ivsr_model)->unpack_output(
++                            ivsr_model, task, &output);
+                 } else {
+-                    if (output.channels != 1 && output.layout == DL_NONE) {
+-                        //convert buffer from NCHW to NHWC
++                    /* Generic path: optional NCHW→NHWC, then ff_proc_from_dnn_to_frame. */
++                    if (output.channels != 1 && (output.layout == DL_NONE || output.layout == DL_NCHW)) {
+                         convert_nchw_to_nhwc(output.data, 1, output.channels, output.height, output.width, output.dt);
++                        if (output.layout == DL_NCHW)
++                            output.layout = DL_NONE;
+                     }
+-
+-                    // For the outputs do not need normalization, normalization factor should be divided back. e.g. EDSR
+                     if (normalize_factor != 1 && output.dt == DNN_FLOAT &&
+                         (fabsf(output.scale - 1.0f) > 1e-6f || fabsf(output.scale) < 1e-6f)) {
+                         #pragma omp parallel for
+-                        // only need to devide by normalize_factor for channels = 1.
+-                        for (int pos = 0; pos < output.height * output.width * output.channels; pos++) {
+-                            ((float*)output.data)[pos] = ((float*)output.data)[pos] / normalize_factor;
+-                        }
++                        for (int pos = 0; pos < output.height * output.width * output.channels; pos++)
++                            ((float*)output.data)[pos] /= normalize_factor;
+                     }
+-
+                     ff_proc_from_dnn_to_frame(task->out_frame, &output,
+                                               &ivsr_model->model.filter_ctx);
+-                    // clamp output to [16, 235] range for Y plane when color range of output is TV range,
+-                    // assume model only process Y plane when output.channels = 1. AVCOL_RANGE_MPEG is mean tv range.
+                     if (task->out_frame->color_range == AVCOL_RANGE_MPEG && output.channels == 1) {
+                         if (bits == 8) {
+                             uint8_t min_x = 16, max_x = 235;
+-                            for (int index = 0; index < task->out_frame->height * task->out_frame->linesize[0];
+-                                 ++index) {
+-                                uint8_t value = task->out_frame->data[0][index];
+-                                task->out_frame->data[0][index] = (uint8_t)clamp(task->out_frame->data[0][index],
+-                                                                                 min_x, max_x);
+-                            }
++                            for (int index = 0; index < task->out_frame->height * task->out_frame->linesize[0]; ++index)
++                                task->out_frame->data[0][index] = (uint8_t)clamp(task->out_frame->data[0][index], min_x, max_x);
+                         } else if (bits == 10) {
+                             uint16_t min_x = 64, max_x = 940;
+-                            uint16_t* dstPtr = (uint16_t*)task->out_frame->data[0];
+-                            ptrdiff_t dstStrideUint16 = task->out_frame->linesize[0] >> 1;
++                            uint16_t *dstPtr = (uint16_t *)task->out_frame->data[0];
++                            ptrdiff_t stride = task->out_frame->linesize[0] >> 1;
+                             for (int y = 0; y < task->out_frame->height; ++y) {
+-                                for (int x = 0; x < task->out_frame->width; ++x) {
++                                for (int x = 0; x < task->out_frame->width; ++x)
+                                     dstPtr[x] = (uint16_t)clamp(dstPtr[x], min_x, max_x);
+-                                }
+-                                dstPtr += dstStrideUint16;
++                                dstPtr += stride;
+                             }
+                         }
+                     }
+@@ -621,11 +1018,14 @@ static int get_input_ivsr(void *model, DNNData * input,
+     }
+ 
+     set_dnndata_info(input, &input_tensor_desc_get);
+-    if (ivsr_model->model_type == TSENET) {
+-        input->dims[dnn_get_channel_idx_by_layout(input->layout)] /= 3;
+-        input->channels /= 3;
++    /* Apply channel divisor from model descriptor (e.g. RIFE /2, TSENET /3). */
++    {
++        int div = get_model_desc(ivsr_model)->channel_divisor;
++        if (div > 1) {
++            input->dims[dnn_get_channel_idx_by_layout(input->layout)] /= div;
++            input->channels /= div;
++        }
+     }
+-
+     // hard code to pass check_modelinput_inlink() that requires DNN_FLOAT of model_input->dt
+     input->dt = DNN_FLOAT;
+ 
+@@ -731,7 +1131,7 @@ static int get_output_ivsr(void *model, const char *input_name,
+     *output_height = output.height;
+     *output_width  = output.width;
+ 
+-    if (ivsr_model->model_type == VIDEOPROC) {
++    if (get_model_desc(ivsr_model)->output_passthrough_dims) {
+         *output_height = input_height;
+         *output_width  = input_width;
+     }
+@@ -819,6 +1219,15 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+ 
+     ivsr_model->model_type = ctx->ivsr_option.model_type;
+ 
++    /* When model_config is provided, parse the JSON descriptor and use the JSON
++     * dispatch path. model_type is ignored — dynamic_desc takes priority in
++     * get_model_desc(). Omitting model_config selects the BasicVSR built-in. */
++    if (ctx->ivsr_option.model_config) {
++        if (parse_model_config_json(ctx, ctx->ivsr_option.model_config,
++                                    &ivsr_model->dynamic_desc) < 0)
++            goto err;
++    }
++
+     // set ivsr config
+     // input model
+     ivsr_model->config = create_and_link_config(NULL, INPUT_MODEL, ctx->model_filename, ctx);
+@@ -876,26 +1285,25 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     default:
+         break;
+     }
+-    // set element type of output for EDSR
+-    if (ivsr_model->model_type == EDSR) {
+-        if (desc->comp[0].depth == 8) {
++    /* Derive output precision from bit depth when flagged in descriptor (e.g. EDSR). */
++    if (get_model_desc(ivsr_model)->out_precision_depth_derived) {
++        if (desc->comp[0].depth == 8)
+             strcpy(output_tensor_desc_set.precision, "u8");
+-        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
++        else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16)
+             strcpy(output_tensor_desc_set.precision, "u16");
+-        }
+     }
+-    // customize layout for Basic_VSR and TSENet
+-    if (ivsr_model->model_type == BASICVSR) {
+-        strcpy(input_tensor_desc_set.layout, "NFHWC");
+-        strcpy(output_tensor_desc_set.layout, "NFHWC");
+-    } else if (ivsr_model->model_type == TSENET) {
+-        //For TSENet, it's not typical N'C'HW, so do the NHWC->NCHW transion in plugin
+-        strcpy(input_tensor_desc_set.layout, "NCHW");
+-        if (desc->comp[0].depth == 8) {
+-            strcpy(input_tensor_desc_set.precision, "u8");
+-        } else if (desc->comp[0].depth == 10 || desc->comp[0].depth == 16) {
+-            strcpy(input_tensor_desc_set.precision, "u16");
+-        }
++    /* Apply layout and precision from descriptor table.
++     * in_precision == NULL means depth-derived (u8/u16 already set above). */
++    {
++        const ModelDesc *md = get_model_desc(ivsr_model);
++        if (md->in_layout)
++            strcpy(input_tensor_desc_set.layout, md->in_layout);
++        if (md->in_precision)
++            strcpy(input_tensor_desc_set.precision, md->in_precision);
++        if (md->out_layout)
++            strcpy(output_tensor_desc_set.layout, md->out_layout);
++        if (md->out_precision)
++            strcpy(output_tensor_desc_set.precision, md->out_precision);
+     }
+     // set scale for non-float type of input
+     if (fabsf(ctx->ivsr_option.normalize_factor - 1) < 1e-6f &&
+@@ -935,25 +1343,19 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     default:
+         break;
+     }
+-    // set color format of model required
+-    switch (ivsr_model->model_type)
++    /* Set model colour format from descriptor. Use color_format_auto for NULL entries. */
+     {
+-    case BASICVSR:
+-    case EDSR:
+-    case TSENET:
+-        strcpy(input_tensor_desc_set.model_color_format, "RGB");
+-        break;
+-    case VIDEOPROC:
+-        if (desc->flags & AV_PIX_FMT_FLAG_RGB)
+-            strcpy(input_tensor_desc_set.model_color_format, "RGB");
+-        else
++        const ModelDesc *md = get_model_desc(ivsr_model);
++        if (md->model_color) {
++            strcpy(input_tensor_desc_set.model_color_format, md->model_color);
++        } else if (md->color_format_auto == 1) {
++            /* VideoProc-style: auto-detect from pixel format */
++            strcpy(input_tensor_desc_set.model_color_format,
++                   (desc->flags & AV_PIX_FMT_FLAG_RGB) ? "RGB" : "I420_Three_Planes");
++        } else if (md->color_format_auto == 2) {
++            /* CustVSR-style: always YUV */
+             strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
+-        break;
+-    case CUSTVSR:
+-        strcpy(input_tensor_desc_set.model_color_format, "I420_Three_Planes");
+-        break;
+-    default:
+-        break;
++        }
+     }
+     config_input_tensor = create_and_link_config(config_input_res, INPUT_TENSOR_DESC_SETTING, &input_tensor_desc_set, ctx);
+     config_output_tensor = create_and_link_config(config_input_tensor, OUTPUT_TENSOR_DESC_SETTING, &output_tensor_desc_set, ctx);
+@@ -964,33 +1366,23 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+     if (config_nireq == NULL)
+         goto err;
+ 
+-    //TODO: reshape setting follows NHW layout. Hardcode the batch_size as 1.
++    /* Alignment and shape from descriptor. */
++    {
++        int a = get_model_desc(ivsr_model)->align;
++        if (a > 0) {
++            frame_h = (frame_h + a - 1) / a * a;
++            frame_w = (frame_w + a - 1) / a * a;
++        }
++    }
+     char shape_string[40] = {0};
+-    switch (ivsr_model->model_type) {
+-    case BASICVSR:
+-        //for BasicVSR, the width requires 32-aligned
+-        frame_w = (frame_w + 32 - 1) / 32 * 32;
+-        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+-        break;
+-    case VIDEOPROC:
+-        // the input resoultion required 8-aligned
+-        frame_h = (frame_h + ALIGNED_SIZE - 1) / ALIGNED_SIZE * ALIGNED_SIZE;
+-        frame_w = (frame_w + ALIGNED_SIZE - 1) / ALIGNED_SIZE * ALIGNED_SIZE;
+-        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+-        break;
+-    case EDSR:
+-        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+-        break;
+-    case CUSTVSR:
+-        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+-        break;
+-    case TSENET:
+-        sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+-        break;
+-    default:
+-        av_log(ctx, AV_LOG_ERROR, "Not supported model type\n");
++    if (!ivsr_model->dynamic_desc &&
++        (ivsr_model->model_type < 0 || ivsr_model->model_type >= MODEL_TYPE_NUM)) {
++        av_log(ctx, AV_LOG_ERROR,
++               "model_type %d out of range and no model_config provided\n",
++               ivsr_model->model_type);
+         return DNN_GENERIC_ERROR;
+     }
++    sprintf(shape_string, "1,%d,%d", frame_h, frame_w);
+     config_reshape = create_and_link_config(config_nireq, RESHAPE_SETTINGS, shape_string, ctx);
+     if (config_reshape == NULL)
+         goto err;
+@@ -1026,8 +1420,9 @@ DNNModel *ff_dnn_load_model_ivsr(DnnContext *ctx,
+ 	        goto err;
+ 	    }
+     ivsr_model->nif = nif;
+-    //TODO: hard code nif for TSENET
+-    if(ivsr_model->model_type == TSENET) ivsr_model->nif = 3;
++    /* Override nif from descriptor if set (TSENET=3, RIFE=2, VIDEOSEAL=1, or JSON nif). */
++    if (get_model_desc(ivsr_model)->nif_override > 0)
++        ivsr_model->nif = get_model_desc(ivsr_model)->nif_override;
+ 
+     status =
+         ivsr_get_attr(ivsr_model->handle, INPUT_TENSOR_DESC, &input_tensor_desc_get);
+@@ -1288,6 +1683,10 @@ void ff_dnn_free_model_ivsr(DNNModel ** model)
+         }
+         av_fifo_freep2(&ivsr_model->frame_queue);
+ 
++        /* Free JSON-loaded model descriptor if present (Patch 0008). */
++        if (ivsr_model->dynamic_desc)
++            free_dynamic_desc(&ivsr_model->dynamic_desc);
++
+         av_freep(&ivsr_model);
+         *model = NULL;
+     }
+diff --git a/libavfilter/dnn_interface.h b/libavfilter/dnn_interface.h
+index 0444526..7732407 100644
+--- a/libavfilter/dnn_interface.h
++++ b/libavfilter/dnn_interface.h
+@@ -155,6 +155,7 @@ typedef struct iVSROptions {
+     float normalize_factor;
+     char *reshape_values;
+     int num_streams;
++    char *model_config;   /* path to JSON model descriptor file (model_type=-1) */
+ 
+     uint32_t frame_input_height;
+     uint32_t frame_input_width;

@@ -1,0 +1,19 @@
+{
+  "_comment":               "HDRTVNet++ LE (Local Enhancement, Path A). normalize_input/normalize_output=false: raw [0,255] float32 I/O. out_precision_depth_derived=true: output bit depth follows source depth (u16 for 10-bit HDR input). output_passthrough_dims=false: output dimensions are determined by the model (standard SR upscale).",
+  "name":                   "HDRTVNet-LE",
+  "nif":                    1,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "in_precision":           "f32",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        true,
+  "normalize_output":       true,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}

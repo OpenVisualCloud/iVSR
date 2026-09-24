@@ -222,7 +222,10 @@ RUN filterdiff \
     git apply --ignore-whitespace 0004-*.patch && \
     git add -A && \
     git apply --3way --whitespace=fix 0002-*.patch && \
-    git apply --3way --whitespace=fix 0003-*.patch
+    git apply --3way --whitespace=fix 0003-*.patch && \
+    git apply --3way --whitespace=fix 0005-*.patch && \
+    git apply --3way --whitespace=fix 0006-*.patch && \
+    git apply --3way --whitespace=fix 0007-*.patch
 
 RUN ./configure \
 --extra-cflags=-fopenmp \

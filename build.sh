@@ -99,7 +99,7 @@ build_install_ivsr_sdk() {
 
   ivsr_sdk_dir=${base_dir}/ivsr_sdk/
   cd ${ivsr_sdk_dir}
-  rm -rf build
+  sudo rm -rf build
   mkdir -p build && cd build && cmake \
     -DENABLE_LOG=OFF -DENABLE_PERF=OFF -DENABLE_THREADPROCESS=ON \
     -DENABLE_IRGUARD=${enable_irguard} \
@@ -138,10 +138,14 @@ build_ffmpeg() {
   ffmpeg_tag=n8.1
   ffmpeg_repo=https://github.com/FFmpeg/FFmpeg.git
 
+  git config --global --add safe.directory ${ffmpeg_dir}
+
   if [ ! -d "${ffmpeg_dir}/.git" ]; then
     git clone --depth 1 --branch ${ffmpeg_tag} ${ffmpeg_repo} ${ffmpeg_dir}
-    git config --global --add safe.directory ${ffmpeg_dir}
   fi
+
+  # Fix ownership of root-owned files from previous sudo builds
+  sudo chown -R $(id -u):$(id -g) "${ffmpeg_dir}"
 
   cd ${ffmpeg_dir}
   git am --abort 2>/dev/null || true
@@ -150,6 +154,9 @@ build_ffmpeg() {
     git fetch --depth 1 origin "refs/tags/${ffmpeg_tag}:refs/tags/${ffmpeg_tag}"
   fi
   git checkout -f "${ffmpeg_tag}"
+  # Remove untracked files left by previous patch applications so git apply
+  # can create new files (e.g. dnn_backend_ivsr.c) without conflicts.
+  git clean -fd -- libavfilter libswscale
 
   # ---------------------------------------------------------------
   # Apply all iVSR patches for n8.1.
@@ -158,6 +165,8 @@ build_ffmpeg() {
   # Patch 0004: n8.1-native patch for configure, dnn_interface.c and
   #   swscale_unscaled.c (exact n8.1 context; no sed required).
   # Patches 0002/0003: fix-ups for dnn_backend_ivsr.c (added by 0001).
+  # Patch 0008: fix 10/16-bit pixel handling for RGB-channel models
+  #   (RIFE, SPAN, EDSR, VideoSeal, HDRTVNet-LE) in dnn_backend_ivsr.c.
   # ---------------------------------------------------------------
   rm -f *.patch
   cp "$base_dir/ivsr_ffmpeg_plugin/patches/"*.patch .
@@ -176,6 +185,10 @@ build_ffmpeg() {
 
   git apply --3way --whitespace=fix 0002-*.patch
   git apply --3way --whitespace=fix 0003-*.patch
+  git apply --3way --whitespace=fix 0005-*.patch
+  git apply --3way --whitespace=fix 0006-*.patch
+  git apply --3way --whitespace=fix 0007-*.patch
+  git apply --3way --whitespace=fix 0008-*.patch
 
   ./configure \
       --enable-gpl \
@@ -205,7 +218,7 @@ install_openvino_from_apt() {
     echo "ERROR: Failed to download Intel GPG key from ${key_url}" >&2
     exit 1
   fi
-  sudo gpg --output "${keyring}" --dearmor /tmp/intel-sw-products.pub
+  sudo gpg --yes --output "${keyring}" --dearmor /tmp/intel-sw-products.pub
   rm -f /tmp/intel-sw-products.pub
 
   if [ ! -s "${keyring}" ]; then

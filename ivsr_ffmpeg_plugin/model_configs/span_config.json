@@ -1,0 +1,19 @@
+{
+  "_comment":               "SPAN single-frame RGB SR. normalize_input=true: divide by 255; normalize_output=true: multiply by 255. Works for both x2 and x4 upscale model variants.",
+  "name":                   "SPAN",
+  "nif":                    1,
+  "align":                  0,
+  "in_layout":              "NCHW",
+  "in_precision":           "f32",
+  "out_layout":             "NCHW",
+  "out_precision":          "fp32",
+  "model_color":            "RGB",
+  "out_order":              "RGB",
+  "window_type":            "single",
+  "window_init_dup":        false,
+  "normalize_input":        true,
+  "normalize_output":       true,
+  "output_passthrough_dims": false,
+  "out_precision_depth_derived": false,
+  "color_format_auto":      0
+}
