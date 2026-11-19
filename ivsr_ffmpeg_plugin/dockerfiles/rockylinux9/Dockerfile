@@ -212,7 +212,8 @@ RUN git clone ${FFMPEG_REPO} ${FFMPEG_DIR} && \
     git checkout ${FFMPEG_VERSION}
 COPY ./ivsr_ffmpeg_plugin/patches/*.patch ${FFMPEG_DIR}/
 # Patch 0001 was written for n7.1 context; exclude the three files covered by
-# the n8.1-native patch 0004, then apply 0004 for those files, and apply 0002/0003.
+# the n8.1-native patch 0004, then apply 0004 for those files, and apply 0002/0003
+# and the num_threads patch 0008.
 RUN filterdiff \
         -x '*/configure' \
         -x '*/dnn_interface.c' \
@@ -222,7 +223,8 @@ RUN filterdiff \
     git apply --ignore-whitespace 0004-*.patch && \
     git add -A && \
     git apply --3way --whitespace=fix 0002-*.patch && \
-    git apply --3way --whitespace=fix 0003-*.patch
+    git apply --3way --whitespace=fix 0003-*.patch && \
+    git apply --3way --whitespace=fix 0008-*.patch
 
 RUN ./configure \
 --extra-cflags=-fopenmp \
