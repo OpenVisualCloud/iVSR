@@ -158,6 +158,8 @@ build_ffmpeg() {
   # Patch 0004: n8.1-native patch for configure, dnn_interface.c and
   #   swscale_unscaled.c (exact n8.1 context; no sed required).
   # Patches 0002/0003: fix-ups for dnn_backend_ivsr.c (added by 0001).
+  # Patch 0008: num_threads option for the ivsr DNN backend.
+  # Patches are applied by name: a new patch needs its own line below.
   # ---------------------------------------------------------------
   rm -f *.patch
   cp "$base_dir/ivsr_ffmpeg_plugin/patches/"*.patch .
@@ -176,6 +178,7 @@ build_ffmpeg() {
 
   git apply --3way --whitespace=fix 0002-*.patch
   git apply --3way --whitespace=fix 0003-*.patch
+  git apply --3way --whitespace=fix 0008-*.patch
 
   ./configure \
       --enable-gpl \
