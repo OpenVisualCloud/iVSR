@@ -1,0 +1,179 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Amir Naghdinezhad <amir.naghdinezhad@intel.com>
+Date: Wed, 18 Nov 2026 16:30:00 -0700
+Subject: [PATCH] swscale: add SSE2/AVX2 float_y_to_uint_y_wrapper
+
+Port of the float -> 8-bit Y conversion SIMD optimization to FFmpeg n8.1
+(SwsInternal, c->opts.src_w, const parameter lists). Applies after
+0004-n8.1-compat-dnn_interface-swscale.patch.
+
+The SSE2 and AVX2 versions give the same bytes as the C version for all
+inputs except |v| >= 2^31/255 (about 8.4e6), where the C result is
+itself out of range. The path is chosen at run time from av_get_cpu_flags(),
+so -cpuflags 0 selects the C version.
+---
+ libswscale/swscale_unscaled.c | 134 ++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 129 insertions(+), 5 deletions(-)
+
+diff --git a/libswscale/swscale_unscaled.c b/libswscale/swscale_unscaled.c
+index 7c5c89c..768043e 100644
+--- a/libswscale/swscale_unscaled.c
++++ b/libswscale/swscale_unscaled.c
+@@ -34,6 +34,22 @@
+ #include "libavutil/pixdesc.h"
+ #include "libavutil/avassert.h"
+ #include "libavutil/avconfig.h"
++#include "libavutil/cpu.h"
++
++/* x86 SIMD versions of float_y_to_uint_y_wrapper(), compiled with per-function
++ * target attributes so no global -msse2/-mavx2 is needed. */
++#if ARCH_X86 && HAVE_SSE2 && (defined(__GNUC__) || defined(__clang__))
++#define FLOAT_Y_TO_UINT_Y_SSE2 1
++#include <emmintrin.h>
++#else
++#define FLOAT_Y_TO_UINT_Y_SSE2 0
++#endif
++#if ARCH_X86 && HAVE_AVX2 && (defined(__GNUC__) || defined(__clang__))
++#define FLOAT_Y_TO_UINT_Y_AVX2 1
++#include <immintrin.h>
++#else
++#define FLOAT_Y_TO_UINT_Y_AVX2 0
++#endif
+ 
+ DECLARE_ALIGNED(8, static const uint8_t, dithers)[8][8][8]={
+ {
+@@ -2099,11 +2115,11 @@ static int uint_y_to_float_y_wrapper(SwsInternal *c, const uint8_t *const src[],
+     return srcSliceH;
+ }
+ 
+-static int float_y_to_uint_y_wrapper(SwsInternal *c,
+-                                     const uint8_t *const src[],
+-                                     const int srcStride[], int srcSliceY,
+-                                     int srcSliceH, uint8_t *const dst[],
+-                                     const int dstStride[])
++static int float_y_to_uint_y_wrapper_c(SwsInternal *c,
++                                       const uint8_t *const src[],
++                                       const int srcStride[], int srcSliceY,
++                                       int srcSliceH, uint8_t *const dst[],
++                                       const int dstStride[])
+ {
+     int y, x;
+     ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
+@@ -2121,6 +2137,114 @@ static int float_y_to_uint_y_wrapper(SwsInternal *c,
+     return srcSliceH;
+ }
+ 
++/*
++ * The SIMD versions below give the same bytes as the C version: the multiply
++ * is the same single-precision 255.0f * v, cvtps2dq rounds with the current
++ * MXCSR mode exactly like lrintf() (round-to-nearest-even by default), and the
++ * signed/unsigned saturating packs clamp to [0, 255] like av_clip_uint8().
++ * They differ only for NaN and |v| >= 2^31 / 255 (about 8.4e6), where the C
++ * version's lrintf() result is itself out of range.
++ */
++#if FLOAT_Y_TO_UINT_Y_SSE2
++__attribute__((target("sse2")))
++static int float_y_to_uint_y_wrapper_sse2(SwsInternal *c,
++                                          const uint8_t *const src[],
++                                          const int srcStride[], int srcSliceY,
++                                          int srcSliceH, uint8_t *const dst[],
++                                          const int dstStride[])
++{
++    int y, x;
++    const int width = c->opts.src_w;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const float *srcPtr = (const float *)src[0];
++    uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
++    const __m128 scale = _mm_set1_ps(255.0f);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x <= width - 16; x += 16) {
++            __m128i i0 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x +  0), scale));
++            __m128i i1 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x +  4), scale));
++            __m128i i2 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x +  8), scale));
++            __m128i i3 = _mm_cvtps_epi32(_mm_mul_ps(_mm_loadu_ps(srcPtr + x + 12), scale));
++            __m128i p01 = _mm_packs_epi32(i0, i1);
++            __m128i p23 = _mm_packs_epi32(i2, i3);
++            _mm_storeu_si128((__m128i *)(dstPtr + x), _mm_packus_epi16(p01, p23));
++        }
++        for (; x < width; ++x)
++            dstPtr[x] = av_clip_uint8(lrintf(255.0f * srcPtr[x]));
++
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStride[0];
++    }
++
++    return srcSliceH;
++}
++#endif
++
++#if FLOAT_Y_TO_UINT_Y_AVX2
++__attribute__((target("avx2")))
++static int float_y_to_uint_y_wrapper_avx2(SwsInternal *c,
++                                          const uint8_t *const src[],
++                                          const int srcStride[], int srcSliceY,
++                                          int srcSliceH, uint8_t *const dst[],
++                                          const int dstStride[])
++{
++    int y, x;
++    const int width = c->opts.src_w;
++    ptrdiff_t srcStrideFloat = srcStride[0] >> 2;
++    const float *srcPtr = (const float *)src[0];
++    uint8_t *dstPtr = dst[0] + dstStride[0] * srcSliceY;
++    const __m256 scale = _mm256_set1_ps(255.0f);
++
++    for (y = 0; y < srcSliceH; ++y) {
++        for (x = 0; x <= width - 32; x += 32) {
++            __m256i i0 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x +  0), scale));
++            __m256i i1 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x +  8), scale));
++            __m256i i2 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 16), scale));
++            __m256i i3 = _mm256_cvtps_epi32(_mm256_mul_ps(_mm256_loadu_ps(srcPtr + x + 24), scale));
++            /* Pack within 128-bit halves so the bytes stay in source order. */
++            __m128i p0 = _mm_packs_epi32(_mm256_castsi256_si128(i0), _mm256_extracti128_si256(i0, 1));
++            __m128i p1 = _mm_packs_epi32(_mm256_castsi256_si128(i1), _mm256_extracti128_si256(i1, 1));
++            __m128i p2 = _mm_packs_epi32(_mm256_castsi256_si128(i2), _mm256_extracti128_si256(i2, 1));
++            __m128i p3 = _mm_packs_epi32(_mm256_castsi256_si128(i3), _mm256_extracti128_si256(i3, 1));
++            _mm_storeu_si128((__m128i *)(dstPtr + x),      _mm_packus_epi16(p0, p1));
++            _mm_storeu_si128((__m128i *)(dstPtr + x + 16), _mm_packus_epi16(p2, p3));
++        }
++        for (; x < width; ++x)
++            dstPtr[x] = av_clip_uint8(lrintf(255.0f * srcPtr[x]));
++
++        srcPtr += srcStrideFloat;
++        dstPtr += dstStride[0];
++    }
++
++    return srcSliceH;
++}
++#endif
++
++/* Runtime dispatch, so -cpuflags (av_force_cpu_flags()) selects the path. */
++static int float_y_to_uint_y_wrapper(SwsInternal *c,
++                                     const uint8_t *const src[],
++                                     const int srcStride[], int srcSliceY,
++                                     int srcSliceH, uint8_t *const dst[],
++                                     const int dstStride[])
++{
++#if FLOAT_Y_TO_UINT_Y_SSE2 || FLOAT_Y_TO_UINT_Y_AVX2
++    const int cpu_flags = av_get_cpu_flags();
++#endif
++#if FLOAT_Y_TO_UINT_Y_AVX2
++    if (c->opts.src_w >= 32 && (cpu_flags & AV_CPU_FLAG_AVX2))
++        return float_y_to_uint_y_wrapper_avx2(c, src, srcStride, srcSliceY,
++                                              srcSliceH, dst, dstStride);
++#endif
++#if FLOAT_Y_TO_UINT_Y_SSE2
++    if (c->opts.src_w >= 16 && (cpu_flags & AV_CPU_FLAG_SSE2))
++        return float_y_to_uint_y_wrapper_sse2(c, src, srcStride, srcSliceY,
++                                              srcSliceH, dst, dstStride);
++#endif
++    return float_y_to_uint_y_wrapper_c(c, src, srcStride, srcSliceY,
++                                       srcSliceH, dst, dstStride);
++}
++
+ static int uint16_y_to_float_y_wrapper(SwsInternal *c,
+                                        const uint8_t *const src[],
+                                        const int srcStride[], int srcSliceY,
+-- 
+2.34.1
+
