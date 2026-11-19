@@ -115,7 +115,8 @@ RUN git config --global user.email "noname@example.com" && \
 COPY ./ivsr_ffmpeg_plugin/patches/*.patch ./
 # Patch 0001 was written for n7.1 context; exclude the three files covered by the
 # n8.1-native patch 0004, then apply 0004 for those files, and finally apply the
-# fix-up patches 0002/0003 and the num_threads patch 0008.
+# fix-up patches 0002/0003 and the num_threads patch 0008,
+# then the swscale SIMD patch 0009.
 RUN filterdiff \
         -x '*/configure' \
         -x '*/dnn_interface.c' \
@@ -126,7 +127,8 @@ RUN filterdiff \
     git add -A && \
     git apply --3way --whitespace=fix 0002-*.patch && \
     git apply --3way --whitespace=fix 0003-*.patch && \
-    git apply --3way --whitespace=fix 0008-*.patch
+    git apply --3way --whitespace=fix 0008-*.patch && \
+    git apply --3way --whitespace=fix 0009-*.patch
 
 RUN ./configure \
     --enable-gpl \
